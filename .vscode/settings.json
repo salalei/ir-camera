@@ -1,0 +1,6 @@
+{
+    "files.associations": {
+        "main.h": "c",
+        "gd32f10x.h": "c"
+    }
+}

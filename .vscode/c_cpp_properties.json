@@ -1,0 +1,21 @@
+{
+    "configurations": [
+        {
+            "name": "Win32",
+            "includePath": [
+                "bsp/",
+                "user/",
+                "lib/gd32f10x-lib/CMSIS/",
+                "lib/gd32f10x-lib/CMSIS/GD/GD32F10x/Include/",
+                "lib/gd32f10x-lib/GD32F10x_standard_peripheral/Include/"
+            ],
+            "defines": [
+                "USE_STDPERIPH_DRIVER",
+                "GD32F10X_MD"
+            ],
+            "compilerPath": "C:\\gcc-arm-none-eabi-10.3-2021.07\\bin\\arm-none-eabi-gcc",
+            "cStandard": "c99"
+        }
+    ],
+    "version": 4
+}

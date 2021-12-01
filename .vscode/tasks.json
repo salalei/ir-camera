@@ -1,0 +1,33 @@
+{
+    // See https://go.microsoft.com/fwlink/?LinkId=733558
+    // for the documentation about the tasks.json format
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build",
+            "type": "shell",
+            "command": "make",
+            "args": [
+                "-j4"
+            ]
+        },
+        {
+            "label": "build and download",
+            "type": "shell",
+            "command": "openocd",
+            "args": [
+                "-f",
+                "C:/OpenOCD-20210729-0.11.0/share/openocd/scripts/interface/cmsis-dap.cfg",
+                "-f",
+                "C:/OpenOCD-20210729-0.11.0/share/openocd/scripts/target/stm32f1x.cfg",
+                "-c",
+                "program ./target/ir-camera.elf verify reset exit"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "dependsOn": "build"
+        }
+    ]
+}

@@ -1,0 +1,3 @@
+build/*
+lib/gd32f10x-lib
+target/*
