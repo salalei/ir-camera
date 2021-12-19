@@ -30,6 +30,7 @@ CFLAGS += $(C_DEFS) $(INC)
 CFLAGS += $(OPT)
 CFLAGS += -Wall
 CFLAGS += -fdata-sections -ffunction-sections -fno-strict-aliasing
+CFLAGS += -MMD -MP -MF$(@:%.o=%.d)
 CFLAGS += -D__STACK_SIZE=$(STACK_SIZE)
 CFLAGS += -D__HEAP_SIZE=$(HEAP_SIZE)
 
@@ -63,7 +64,7 @@ $(TARGET_DIR)/$(TARGET).bin: $(TARGET_DIR)/$(TARGET).elf
 	@$(BIN) $< $@
 	@echo BIN $@
 
-$(TARGET_DIR)/$(TARGET).elf: $(OBJECTS)
+$(TARGET_DIR)/$(TARGET).elf: $(OBJECTS) $(LDSCRIPT)
 	@$(CC) $(OBJECTS) $(LDFLAGS) -o $@
 	@echo LD $@...
 	@$(SZ) $@

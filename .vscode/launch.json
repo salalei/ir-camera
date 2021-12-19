@@ -11,7 +11,7 @@
             "request": "launch",
             "type": "cortex-debug",
             "servertype": "openocd",
-            "runToMain": false,
+            "runToMain": true,
             "configFiles": [
                 "C:/OpenOCD-20210729-0.11.0/share/openocd/scripts/interface/cmsis-dap.cfg",
                 "C:/OpenOCD-20210729-0.11.0/share/openocd/scripts/target/stm32f1x.cfg"

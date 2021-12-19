@@ -155,9 +155,7 @@ Reset_Handler:
     strlt r0, [r1], #4
     blt .L_loop2
 
-    bl SystemInit
-
-    bl main
+    bl __entry
 
 .pool
 .size Reset_Handler, . - Reset_Handler

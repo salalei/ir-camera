@@ -8,6 +8,7 @@
  * @copyright Copyright (c) 2021
  * 
  */
+
 MEMORY
 {
     FLASH (rx) : ORIGIN = 0x8000000, LENGTH = 64K
@@ -43,6 +44,24 @@ SECTIONS
 		*(.rodata*)
 
 		KEEP(*(.eh_frame*))
+
+	} > FLASH
+
+	.initcall :
+	{
+		. = ALIGN(4);
+		PROVIDE(__initcall0_start = .);
+    	KEEP(*(.initcall0))
+		PROVIDE(__initcall1_start = .);
+    	KEEP(*(.initcall1))
+		PROVIDE(__initcall2_start = .);
+    	KEEP(*(.initcall2))
+		PROVIDE(__initcall3_start = .);
+    	KEEP(*(.initcall3))
+		PROVIDE(__initcall4_start = .);
+    	KEEP(*(.initcall4))
+		PROVIDE(__initcall_end = .);
+
 	} > FLASH
 
 	.ARM.extab : 

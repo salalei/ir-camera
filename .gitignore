@@ -1,3 +1,4 @@
 build/*
 lib/gd32f10x-lib
+lib/FreeRTOS
 target/*
