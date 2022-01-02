@@ -46,7 +46,15 @@
         "driver.h": "c",
         "init.h": "c",
         "serial.h": "c",
-        "timers.h": "c"
+        "timers.h": "c",
+        "ll_obj.h": "c",
+        "ll_list.h": "c",
+        "ll_types.h": "c",
+        "ll_disp.h": "c",
+        "ll_serial.h": "c",
+        "ll_drv.h": "c",
+        "ll_assert.h": "c",
+        "ll_log.h": "c"
     },
     "cSpell.words": [
         "CPHA",

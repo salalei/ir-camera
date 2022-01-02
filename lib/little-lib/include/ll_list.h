@@ -1,5 +1,5 @@
 /**
- * @file list.h
+ * @file ll_list.h
  * @author salalei (1028609078@qq.com)
  * @brief 双向循环链表(参考linux)
  * @version 0.1
@@ -8,21 +8,27 @@
  * @copyright Copyright (c) 2021
  *
  */
-#ifndef __LIST_H__
-#define __LIST_H__
+#ifndef __LL_LIST_H__
+#define __LL_LIST_H__
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#include "../include/types.h"
+#include "ll_types.h"
+
+struct ll_list_node
+{
+    struct ll_list_node *prev;
+    struct ll_list_node *next;
+};
 
 /**
- * @brief 创建链表头的实体
+ * @brief 创建链表头的实例
  *
  * @param node 需要创建的链表头
  */
-#define LIST_HEAD_INIT_INS(node) \
+#define LL_LIST_HEAD_INIT_INS(node) \
     { \
         .prev = &(node), \
         .next = &(node) \
@@ -34,7 +40,7 @@ extern "C" {
  * @param head 指向要遍历的链表头指针
  * @param node 链表节点指针，由用户提供
  */
-#define FOR_EACH_LIST_NODE(head, node) \
+#define LL_FOR_EACH_LIST_NODE(head, node) \
     for ((node) = (head)->next; (node) != (head); (node) = (node)->next)
 
 /**
@@ -44,7 +50,7 @@ extern "C" {
  * @param node 链表节点指针，由用户提供
  * @param temp 储存当前节点的下一个节点的地址
  */
-#define FOR_EACH_LIST_NODE_SAFE(head, node, temp) \
+#define LL_FOR_EACH_LIST_NODE_SAFE(head, node, temp) \
     for ((node) = (head)->next, (temp) = (node)->next; (node) != (head); (node) = (temp), (temp) = (node)->next)
 
 /**
@@ -53,7 +59,7 @@ extern "C" {
  * @param head 指向要遍历的链表头指针
  * @param node 链表节点指针，由用户提供
  */
-#define FOR_EACH_LIST_NODE_REVERSE(head, node) \
+#define LL_FOR_EACH_LIST_NODE_REVERSE(head, node) \
     for ((node) = (head)->prev; (node) != (head); (node) = (node)->prev)
 
 /**
@@ -63,7 +69,7 @@ extern "C" {
  * @param node 链表节点指针，由用户提供
  * @param temp 储存当前节点的上一个节点的地址
  */
-#define FOR_EACH_LIST_NODE_REVERSE_SAFE(head, node, temp) \
+#define LL_FOR_EACH_LIST_NODE_REVERSE_SAFE(head, node, temp) \
     for ((node) = (head)->prev, (temp) = (node)->prev; (node) != (head); (node) = (temp), (temp) = (node)->prev)
 
 /**
@@ -73,10 +79,10 @@ extern "C" {
  * @param p 指向某结构体的指针，由用户提供
  * @param mem 节点在该结构体中的成员名
  */
-#define FOR_EACH_LIST_ENTRY(head, p, mem) \
-    for ((p) = CONTAINER_OF((head)->next, typeof(*p), mem); \
+#define LL_FOR_EACH_LIST_ENTRY(head, p, mem) \
+    for ((p) = LL_CONTAINER_OF((head)->next, typeof(*p), mem); \
          &(p)->mem != (head); \
-         (p) = CONTAINER_OF((p)->mem.next, typeof(*p), mem))
+         (p) = LL_CONTAINER_OF((p)->mem.next, typeof(*p), mem))
 
 /**
  * @brief 正向遍历某结构体中的节点，可以在遍历的时候移除节点
@@ -86,10 +92,10 @@ extern "C" {
  * @param mem 节点在该结构体中的成员名
  * @param temp 储存当前节点的下一个节点的地址
  */
-#define FOR_EACH_LIST_ENTRY_SAFE(head, p, mem, temp) \
-    for ((p) = CONTAINER_OF((head)->next, typeof(*p), mem), (temp) = (p)->mem.next; \
+#define LL_FOR_EACH_LIST_ENTRY_SAFE(head, p, mem, temp) \
+    for ((p) = LL_CONTAINER_OF((head)->next, typeof(*p), mem), (temp) = (p)->mem.next; \
          &(p)->mem != (head); \
-         (p) = CONTAINER_OF((temp), typeof(*p), mem), (temp) = (p)->mem.next)
+         (p) = LL_CONTAINER_OF((temp), typeof(*p), mem), (temp) = (p)->mem.next)
 
 /**
  * @brief 逆向遍历某结构体中的节点
@@ -98,10 +104,10 @@ extern "C" {
  * @param p 指向某结构体的指针，由用户提供
  * @param mem 节点在该结构体中的成员名
  */
-#define FOR_EACH_LIST_ENTRY_REVERSE(head, p, mem) \
-    for ((p) = CONTAINER_OF((head)->prev, typeof(*p), mem); \
+#define LL_FOR_EACH_LIST_ENTRY_REVERSE(head, p, mem) \
+    for ((p) = LL_CONTAINER_OF((head)->prev, typeof(*p), mem); \
          &(p)->mem != (head); \
-         (p) = CONTAINER_OF((p)->mem.prev, typeof(*p), mem))
+         (p) = LL_CONTAINER_OF((p)->mem.prev, typeof(*p), mem))
 
 /**
  * @brief 逆向遍历某结构体中的节点，可以在遍历的时候移除节点
@@ -111,17 +117,17 @@ extern "C" {
  * @param mem 节点在该结构体中的成员名
  * @param temp 储存当前节点的上一个节点的地址
  */
-#define FOR_EACH_LIST_ENTRY_REVERSE_SAFE(head, p, mem, temp) \
-    for ((p) = CONTAINER_OF((head)->prev, typeof(*p), mem), (temp) = (p)->mem.prev; \
+#define LL_FOR_EACH_LIST_ENTRY_REVERSE_SAFE(head, p, mem, temp) \
+    for ((p) = LL_CONTAINER_OF((head)->prev, typeof(*p), mem), (temp) = (p)->mem.prev; \
          &(p)->mem != (head); \
-         (p) = CONTAINER_OF((temp), typeof(*p), mem), (temp) = (p)->mem.prev)
+         (p) = LL_CONTAINER_OF((temp), typeof(*p), mem), (temp) = (p)->mem.prev)
 
 /**
  * @brief 初始化链表头
  *
  * @param head 指向链表头的指针
  */
-static inline void list_head_init(struct list_node *head)
+static inline void ll_list_head_init(struct ll_list_node *head)
 {
     head->prev = head;
     head->next = head;
@@ -133,7 +139,7 @@ static inline void list_head_init(struct list_node *head)
  * @param node 指向需要被插入的节点指针
  * @param new_node 指向要插入的新节点指针
  */
-static inline void list_insert_before(struct list_node *node, struct list_node *new_node)
+static inline void ll_list_insert_before(struct ll_list_node *node, struct ll_list_node *new_node)
 {
     new_node->next = node;
     new_node->prev = node->prev;
@@ -147,7 +153,7 @@ static inline void list_insert_before(struct list_node *node, struct list_node *
  * @param node 指向需要被插入的节点指针
  * @param new_node 指向要插入的新节点指针
  */
-static inline void list_insert_after(struct list_node *node, struct list_node *new_node)
+static inline void ll_list_insert_after(struct ll_list_node *node, struct ll_list_node *new_node)
 {
     new_node->next = node->next;
     new_node->prev = node;
@@ -161,9 +167,9 @@ static inline void list_insert_after(struct list_node *node, struct list_node *n
  * @param head 指向链表头的指针
  * @param new_node 指向要添加的新节点指针
  */
-static inline void list_add(struct list_node *head, struct list_node *new_node)
+static inline void ll_list_add(struct ll_list_node *head, struct ll_list_node *new_node)
 {
-    list_insert_after(head, new_node);
+    ll_list_insert_after(head, new_node);
 }
 
 /**
@@ -172,9 +178,9 @@ static inline void list_add(struct list_node *head, struct list_node *new_node)
  * @param head 指向链表头的指针
  * @param new_node 指向要添加的新节点指针
  */
-static inline void list_add_tail(struct list_node *head, struct list_node *new_node)
+static inline void ll_list_add_tail(struct ll_list_node *head, struct ll_list_node *new_node)
 {
-    list_insert_before(head, new_node);
+    ll_list_insert_before(head, new_node);
 }
 
 /**
@@ -182,7 +188,7 @@ static inline void list_add_tail(struct list_node *head, struct list_node *new_n
  *
  * @param node 指向需要删除的节点指针
  */
-static inline void list_delete(struct list_node *node)
+static inline void ll_list_delete(struct ll_list_node *node)
 {
     node->prev->next = node->next;
     node->next->prev = node->prev;
@@ -197,7 +203,7 @@ static inline void list_delete(struct list_node *node)
  * @return true
  * @return false
  */
-static inline bool list_is_empty(struct list_node *head)
+static inline bool ll_list_is_empty(struct ll_list_node *head)
 {
     return head->next == head;
 }
@@ -206,9 +212,9 @@ static inline bool list_is_empty(struct list_node *head)
  * @brief 获取链表的首个元素
  *
  * @param head 指向链头的指针
- * @return struct list_node* 链表中首个元素的地址
+ * @return struct ll_list_node* 链表中首个元素的地址
  */
-static inline struct list_node *list_first(struct list_node *head)
+static inline struct ll_list_node *ll_list_first(struct ll_list_node *head)
 {
     return head->next;
 }
@@ -217,9 +223,9 @@ static inline struct list_node *list_first(struct list_node *head)
  * @brief 获取链表的末尾元素
  *
  * @param head 指向链头的指针
- * @return struct list_node* 链表中最后元素的地址
+ * @return struct ll_list_node* 链表中最后元素的地址
  */
-static inline struct list_node *list_last(struct list_node *head)
+static inline struct ll_list_node *ll_list_last(struct ll_list_node *head)
 {
     return head->prev;
 }

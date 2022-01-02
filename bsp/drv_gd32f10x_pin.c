@@ -12,43 +12,43 @@
 #ifdef bool
 #undef bool
 #endif
-#include "../lib/little-lib/drivers/pin.h"
-#include "init.h"
+#include "ll_pin.h"
+#include "ll_init.h"
 
 #define PORT (((struct gd32f10x_pin_handle *)(handle))->port)
 #define PIN  (((struct gd32f10x_pin_handle *)(handle))->pin)
 
 struct gd32f10x_pin_handle
 {
-    struct pin parent;
+    struct ll_pin parent;
     uint32_t port;
     uint32_t pin;
 };
 
-static void _pin_high(struct pin *handle)
+static void _pin_high(struct ll_pin *handle)
 {
     GPIO_BOP(PORT) = PIN;
 }
 
-static void _pin_low(struct pin *handle)
+static void _pin_low(struct ll_pin *handle)
 {
     GPIO_BC(PORT) = PIN;
 }
 
-static void _pin_toggle(struct pin *handle)
+static void _pin_toggle(struct ll_pin *handle)
 {
     GPIO_OCTL(PORT) ^= PIN;
 }
 
-static enum pin_state _pin_read(struct pin *handle)
+static enum ll_pin_state _pin_read(struct ll_pin *handle)
 {
-    return (GPIO_ISTAT(PORT) & (PIN)) ? PIN_HIGH : PIN_LOW;
+    return (GPIO_ISTAT(PORT) & (PIN)) ? LL_PIN_HIGH : LL_PIN_LOW;
 }
 
-const static struct pin_ops ops = {
+const static struct ll_pin_ops ops = {
     .pin_high = _pin_high,
     .pin_low = _pin_low,
-    .pin_toggle = _pin_toggle,
+    .ll_pin_toggle = _pin_toggle,
     .pin_read = _pin_read,
     .set_irq_cb = NULL,
     .enable_irq = NULL,
@@ -66,14 +66,14 @@ const static struct pin_ops ops = {
 static void drv_gd32f10x_register_pin(struct gd32f10x_pin_handle *handle,
                                       uint32_t port,
                                       uint32_t pin,
-                                      enum pin_active active,
+                                      enum ll_pin_active active,
                                       const char *name)
 {
     handle->port = port;
     handle->pin = pin;
     handle->parent.ops = &ops;
     handle->parent.active = active;
-    __pin_register(&handle->parent, name, NULL);
+    __ll_pin_register(&handle->parent, name, NULL);
 }
 
 #define GD32F10X_REGISTER_PIN(port, pin, active, name) \
@@ -90,13 +90,13 @@ static int bsp_pin_init(void)
     rcu_periph_clock_enable(RCU_GPIOC);
 
     gpio_init(GPIOC, GPIO_MODE_OUT_PP, GPIO_OSPEED_2MHZ, GPIO_PIN_13);
-    GD32F10X_REGISTER_PIN(GPIOC, GPIO_PIN_13, LOW_ACTIVE, "led");
+    GD32F10X_REGISTER_PIN(GPIOC, GPIO_PIN_13, LL_LOW_ACTIVE, "led");
     gpio_init(GPIOA, GPIO_MODE_OUT_PP, GPIO_OSPEED_2MHZ, GPIO_PIN_2);
-    GD32F10X_REGISTER_PIN(GPIOA, GPIO_PIN_2, HIGH_ACTIVE, "lcd dc");
+    GD32F10X_REGISTER_PIN(GPIOA, GPIO_PIN_2, LL_HIGH_ACTIVE, "lcd dc");
     gpio_init(GPIOA, GPIO_MODE_OUT_PP, GPIO_OSPEED_2MHZ, GPIO_PIN_3);
-    GD32F10X_REGISTER_PIN(GPIOA, GPIO_PIN_3, LOW_ACTIVE, "lcd res");
+    GD32F10X_REGISTER_PIN(GPIOA, GPIO_PIN_3, LL_LOW_ACTIVE, "lcd res");
     gpio_init(GPIOA, GPIO_MODE_OUT_PP, GPIO_OSPEED_2MHZ, GPIO_PIN_4);
-    GD32F10X_REGISTER_PIN(GPIOA, GPIO_PIN_4, LOW_ACTIVE, "lcd cs");
+    GD32F10X_REGISTER_PIN(GPIOA, GPIO_PIN_4, LL_LOW_ACTIVE, "lcd cs");
     return 0;
 }
-BOARD_INITCALL(bsp_pin_init);
+LL_BOARD_INITCALL(bsp_pin_init);

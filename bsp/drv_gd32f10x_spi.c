@@ -12,34 +12,34 @@
 #ifdef bool
 #undef bool
 #endif
-#include "../lib/little-lib/drivers/spi.h"
-#include "dbg.h"
-#include "init.h"
+#include "ll_init.h"
+#include "ll_log.h"
+#include "ll_spi.h"
 
 struct gd32f10x_spi_handle
 {
-    struct spi_bus parent;
+    struct ll_spi_bus parent;
     uint32_t spi;
     uint32_t send_dma;
     dma_channel_enum send_dma_ch;
-    struct spi_conf conf;
+    struct ll_spi_conf conf;
     spi_parameter_struct param;
     uint32_t max_speed_hz;
 };
 
-static ssize_t master_send(struct spi_dev *dev, const void *buf, size_t size)
+static ssize_t master_send(struct ll_spi_dev *dev, const void *buf, size_t size)
 {
     struct gd32f10x_spi_handle *handle = (struct gd32f10x_spi_handle *)dev->spi;
 
     dma_memory_address_config(handle->send_dma, handle->send_dma_ch, (uint32_t)buf);
     dma_transfer_number_config(handle->send_dma,
                                handle->send_dma_ch,
-                               handle->conf.frame_bits == __SPI_FRAME_8BIT ? size : size / 2);
+                               handle->conf.frame_bits == __LL_SPI_FRAME_8BIT ? size : size / 2);
     dma_channel_enable(handle->send_dma, handle->send_dma_ch);
     return size;
 }
 
-static void hard_cs_ctrl(struct spi_dev *dev, bool state)
+static void hard_cs_ctrl(struct ll_spi_dev *dev, bool state)
 {
     struct gd32f10x_spi_handle *handle = (struct gd32f10x_spi_handle *)dev->spi;
 
@@ -49,7 +49,7 @@ static void hard_cs_ctrl(struct spi_dev *dev, bool state)
         spi_disable(handle->spi);
 }
 
-static inline int get_prescale(struct spi_dev *dev)
+static inline int get_prescale(struct ll_spi_dev *dev)
 {
     int prescale;
     int max_speed_hz = ((struct gd32f10x_spi_handle *)dev->spi)->max_speed_hz;
@@ -68,7 +68,7 @@ static inline int get_prescale(struct spi_dev *dev)
     return prescale;
 }
 
-static int config(struct spi_dev *dev)
+static int config(struct ll_spi_dev *dev)
 {
     bool dirty = false;
     struct gd32f10x_spi_handle *handle = (struct gd32f10x_spi_handle *)dev->spi;
@@ -77,7 +77,7 @@ static int config(struct spi_dev *dev)
         int prescale = get_prescale(dev);
         if (prescale < 0)
         {
-            ERROR("not support spi speed hz %d", dev->conf.max_speed_hz);
+            LL_ERROR("not support spi speed hz %d", dev->conf.max_speed_hz);
             return -EIO;
         }
         handle->param.prescale = CTL0_PSC(prescale);
@@ -86,13 +86,13 @@ static int config(struct spi_dev *dev)
     }
     if (handle->conf.frame_bits != dev->conf.frame_bits)
     {
-        if (dev->conf.frame_bits == __SPI_FRAME_8BIT)
+        if (dev->conf.frame_bits == __LL_SPI_FRAME_8BIT)
         {
             dma_memory_width_config(handle->send_dma, handle->send_dma_ch, DMA_MEMORY_WIDTH_8BIT);
             dma_periph_width_config(handle->send_dma, handle->send_dma_ch, DMA_PERIPHERAL_WIDTH_8BIT);
             handle->param.frame_size = SPI_FRAMESIZE_8BIT;
         }
-        else if (dev->conf.frame_bits == __SPI_FRAME_16BIT)
+        else if (dev->conf.frame_bits == __LL_SPI_FRAME_16BIT)
         {
             dma_memory_width_config(handle->send_dma, handle->send_dma_ch, DMA_MEMORY_WIDTH_16BIT);
             dma_periph_width_config(handle->send_dma, handle->send_dma_ch, DMA_PERIPHERAL_WIDTH_16BIT);
@@ -100,7 +100,7 @@ static int config(struct spi_dev *dev)
         }
         else
         {
-            ERROR("not support spi frame %d bits", dev->conf.frame_bits * 8);
+            LL_ERROR("not support spi frame %d bits", dev->conf.frame_bits * 8);
             return -EIO;
         }
         handle->conf.frame_bits = dev->conf.frame_bits;
@@ -131,16 +131,16 @@ static int config(struct spi_dev *dev)
     }
     if (handle->conf.cs_mode != dev->conf.cs_mode)
     {
-        if (dev->conf.cs_mode == __SPI_HARD_CS)
+        if (dev->conf.cs_mode == __LL_SPI_HARD_CS)
             handle->param.nss = SPI_NSS_HARD;
         else
             handle->param.nss = SPI_NSS_SOFT;
         handle->conf.cs_mode = dev->conf.cs_mode;
         dirty = true;
     }
-    if (dev->conf.proto != __SPI_PROTO_STD)
+    if (dev->conf.proto != __LL_SPI_PROTO_STD)
     {
-        ERROR("not support spi proto %d", dev->conf.proto);
+        LL_ERROR("not support spi proto %d", dev->conf.proto);
         return -EIO;
     }
     if (handle->conf.send_addr_not_inc != dev->conf.send_addr_not_inc)
@@ -161,7 +161,7 @@ static int config(struct spi_dev *dev)
     return 0;
 }
 
-const static struct spi_ops ops = {
+const static struct ll_spi_ops ops = {
     .master_send = master_send,
     .hard_cs_ctrl = hard_cs_ctrl,
     .config = config,
@@ -175,7 +175,7 @@ static void spi_irq_handler(struct gd32f10x_spi_handle *handle)
     {
         dma_interrupt_flag_clear(handle->send_dma, handle->send_dma_ch, DMA_INT_FLAG_FTF);
         dma_channel_disable(handle->send_dma, handle->send_dma_ch);
-        __spi_irq_handler(handle->parent.dev);
+        __ll_spi_irq_handler(handle->parent.dev);
     }
 }
 
@@ -232,15 +232,15 @@ static int bsp_spi_init(void)
     spi0.send_dma = DMA0;
     spi0.send_dma_ch = DMA_CH2;
     spi0.conf.max_speed_hz = SystemCoreClock / 4;
-    spi0.conf.frame_bits = __SPI_FRAME_8BIT;
+    spi0.conf.frame_bits = __LL_SPI_FRAME_8BIT;
     spi0.conf.cpha = 1;
     spi0.conf.cpol = 1;
-    spi0.conf.endian = __SPI_MSB;
-    spi0.conf.cs_mode = __SPI_SOFT_CS;
-    spi0.conf.proto = __SPI_PROTO_STD;
+    spi0.conf.endian = __LL_SPI_MSB;
+    spi0.conf.cs_mode = __LL_SPI_SOFT_CS;
+    spi0.conf.proto = __LL_SPI_PROTO_STD;
     spi0.max_speed_hz = spi0.conf.max_speed_hz;
     spi0.parent.cs_hard_max_numb = 0;
     spi0.parent.ops = &ops;
-    return __spi_bus_register(&spi0.parent, "spi0", NULL, __DRIVER_MODE_ASYNC_WRITE);
+    return __ll_spi_bus_register(&spi0.parent, "spi0", NULL, __LL_DRV_MODE_ASYNC_WRITE);
 }
-BOARD_INITCALL(bsp_spi_init);
+LL_BOARD_INITCALL(bsp_spi_init);

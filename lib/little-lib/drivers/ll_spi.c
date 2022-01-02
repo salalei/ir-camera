@@ -8,21 +8,16 @@
  * @copyright Copyright (c) 2021
  *
  */
-#include "spi.h"
-#include "dbg.h"
-#include "pin.h"
-
-#include "../modules/list.h"
-#include "../modules/object.h"
+#include "ll_spi.h"
+#include "ll_log.h"
+#include "ll_pin.h"
 
 #include "semphr.h"
 #include "task.h"
 
 #include <string.h>
 
-static struct list_node head = LIST_HEAD_INIT_INS(head);
-
-static int take_bus(struct spi_dev *dev)
+static int take_bus(struct ll_spi_dev *dev)
 {
     if (dev->spi->dev != dev)
     {
@@ -32,45 +27,45 @@ static int take_bus(struct spi_dev *dev)
             return res;
         dev->spi->dev = dev;
     }
-    if (dev->conf.cs_mode == __SPI_SOFT_CS)
-        pin_active(dev->cs_pin);
-    else if (dev->conf.cs_mode == __SPI_HARD_CS)
+    if (dev->conf.cs_mode == __LL_SPI_SOFT_CS)
+        ll_pin_active(dev->cs_pin);
+    else if (dev->conf.cs_mode == __LL_SPI_HARD_CS)
         dev->spi->ops->hard_cs_ctrl(dev, true);
 
     return 0;
 }
 
-static void release_bus(struct spi_dev *dev)
+static void release_bus(struct ll_spi_dev *dev)
 {
-    if (dev->conf.cs_mode == __SPI_SOFT_CS)
-        pin_deactive(dev->cs_pin);
-    else if (dev->conf.cs_mode == __SPI_HARD_CS)
+    if (dev->conf.cs_mode == __LL_SPI_SOFT_CS)
+        ll_pin_deactive(dev->cs_pin);
+    else if (dev->conf.cs_mode == __LL_SPI_HARD_CS)
         dev->spi->ops->hard_cs_ctrl(dev, false);
 }
 
-static int spi_trans(struct spi_bus *bus, struct spi_trans *trans)
+static int spi_trans(struct ll_spi_bus *bus, struct ll_spi_trans *trans)
 {
     size_t trans_size;
 
-    if (trans->dir == __SPI_DIR_SEND)
+    if (trans->dir == __LL_SPI_DIR_SEND)
     {
-        ASSERT(bus->dev->parent.drv_mode & __DRIVER_MODE_WRITE);
+        LL_ASSERT(bus->dev->parent.drv_mode & __LL_DRV_MODE_WRITE);
         trans_size = bus->ops->master_send(bus->dev, trans->buf, trans->size);
     }
     else
     {
-        ASSERT(bus->dev->parent.drv_mode & __DRIVER_MODE_WRITE);
+        LL_ASSERT(bus->dev->parent.drv_mode & __LL_DRV_MODE_WRITE);
         trans_size = bus->ops->matser_recv(bus->dev, trans->buf, trans->size);
     }
     if (trans_size != trans->size)
     {
-        ERROR("failed to spi transfer");
+        LL_ERROR("failed to spi transfer");
         return -EIO;
     }
     return 0;
 }
 
-static void noticy_or_exec_cb(struct spi_msg *msg, BaseType_t *woken)
+static void noticy_or_exec_cb(struct ll_spi_msg *msg, BaseType_t *woken)
 {
     if (msg->thread)
     {
@@ -90,15 +85,15 @@ static void noticy_or_exec_cb(struct spi_msg *msg, BaseType_t *woken)
     }
 }
 
-void __spi_irq_handler(struct spi_dev *dev)
+void __ll_spi_irq_handler(struct ll_spi_dev *dev)
 {
-    struct spi_msg *msg;
-    struct spi_bus *bus = dev->spi;
+    struct ll_spi_msg *msg;
+    struct ll_spi_bus *bus = dev->spi;
     BaseType_t woken = 0;
     uint32_t temp;
 
-    ASSERT(dev && dev->spi->parent.drv_mode & __DRIVER_MODE_ASYNC_WRITE);
-    msg = (struct spi_msg *)list_first(&bus->msg_head);
+    LL_ASSERT(dev && dev->spi->parent.drv_mode & __LL_DRV_MODE_ASYNC_WRITE);
+    msg = (struct ll_spi_msg *)ll_list_first(&bus->msg_head);
     if (bus->trans_index < msg->size)
     {
         msg->result = spi_trans(bus, &msg->trans[bus->trans_index]);
@@ -113,17 +108,17 @@ void __spi_irq_handler(struct spi_dev *dev)
     release_bus(msg->dev);
     noticy_or_exec_cb(msg, &woken);
     temp = taskENTER_CRITICAL_FROM_ISR();
-    list_delete(&msg->node);
+    ll_list_delete(&msg->node);
     while (1)
     {
-        if (list_is_empty(&bus->msg_head))
+        if (ll_list_is_empty(&bus->msg_head))
         {
             bus->send_busy = 0;
             break;
         }
         else
         {
-            msg = (struct spi_msg *)list_first(&bus->msg_head);
+            msg = (struct ll_spi_msg *)ll_list_first(&bus->msg_head);
             msg->result = take_bus(bus->dev);
             if (!msg->result)
             {
@@ -133,7 +128,7 @@ void __spi_irq_handler(struct spi_dev *dev)
             if (msg->result)
             {
                 release_bus(bus->dev);
-                list_delete(&msg->node);
+                ll_list_delete(&msg->node);
                 taskEXIT_CRITICAL_FROM_ISR(temp);
                 noticy_or_exec_cb(msg, &woken);
                 temp = taskENTER_CRITICAL_FROM_ISR();
@@ -155,41 +150,41 @@ void __spi_irq_handler(struct spi_dev *dev)
  * @param drv_mode 底层驱动给定的工作模式
  * @return int 返回0
  */
-int __spi_bus_register(struct spi_bus *bus,
-                       const char *name,
-                       void *priv,
-                       int drv_mode)
+int __ll_spi_bus_register(struct ll_spi_bus *bus,
+                          const char *name,
+                          void *priv,
+                          int drv_mode)
 {
-    ASSERT(bus && name && bus->ops && bus->ops->config);
-    if (drv_mode & __DRIVER_MODE_ASYNC_WRITE)
+    LL_ASSERT(bus && name && bus->ops && bus->ops->config);
+    if (drv_mode & __LL_DRV_MODE_ASYNC_WRITE)
     {
-        ASSERT(bus->ops->master_send);
-        drv_mode |= __DRIVER_MODE_WRITE;
+        LL_ASSERT(bus->ops->master_send);
+        drv_mode |= __LL_DRV_MODE_WRITE;
     }
-    if (drv_mode & __DRIVER_MODE_ASYNC_READ)
+    if (drv_mode & __LL_DRV_MODE_ASYNC_READ)
     {
-        ASSERT(bus->ops->matser_recv);
-        drv_mode |= __DRIVER_MODE_READ;
+        LL_ASSERT(bus->ops->matser_recv);
+        drv_mode |= __LL_DRV_MODE_READ;
     }
 
-    __driver_init(&bus->parent, name, priv, drv_mode);
+    __ll_drv_init(&bus->parent, name, priv, drv_mode);
     bus->dev = NULL;
-    list_head_init(&bus->msg_head);
-    list_head_init(&bus->dev_head);
+    ll_list_head_init(&bus->msg_head);
+    ll_list_head_init(&bus->dev_head);
     bus->trans_index = 0;
     bus->send_busy = 0;
     bus->cs_hard_max_numb = 0;
     bus->lock = NULL;
 
-    list_add_tail(&head, &bus->parent.parent.node);
+    __ll_drv_register(&bus->parent);
 
     return 0;
 }
 
-static inline int spi_poll_xfer(struct spi_msg *msg)
+static inline int spi_poll_xfer(struct ll_spi_msg *msg)
 {
     int res = 0;
-    struct spi_bus *bus = msg->dev->spi;
+    struct ll_spi_bus *bus = msg->dev->spi;
     size_t index = 0;
 
     xSemaphoreTake(bus->lock, portMAX_DELAY);
@@ -217,14 +212,14 @@ static inline int spi_poll_xfer(struct spi_msg *msg)
     return res;
 }
 
-static inline int spi_int_trans(struct spi_msg *msg)
+static inline int spi_int_trans(struct ll_spi_msg *msg)
 {
     int res = 0;
     uint32_t temp;
-    struct spi_bus *bus = msg->dev->spi;
+    struct ll_spi_bus *bus = msg->dev->spi;
 
     temp = taskENTER_CRITICAL_FROM_ISR();
-    list_add_tail(&bus->msg_head, &msg->node);
+    ll_list_add_tail(&bus->msg_head, &msg->node);
     if (!bus->send_busy)
     {
         res = take_bus(msg->dev);
@@ -236,7 +231,7 @@ static inline int spi_int_trans(struct spi_msg *msg)
         if (res)
         {
             release_bus(msg->dev);
-            list_delete(&msg->node);
+            ll_list_delete(&msg->node);
         }
         else
             bus->send_busy = 1;
@@ -246,15 +241,22 @@ static inline int spi_int_trans(struct spi_msg *msg)
     return res;
 }
 
-int spi_sync(struct spi_dev *dev, struct spi_msg *msg)
+/**
+ * @brief spi同步传输
+ *
+ * @param dev 指向spi设备的指针
+ * @param msg 指向消息队列的指针
+ * @return int 成功返回0，失败返回一个负数
+ */
+int ll_spi_sync(struct ll_spi_dev *dev, struct ll_spi_msg *msg)
 {
-    struct spi_bus *bus = dev->spi;
+    struct ll_spi_bus *bus = dev->spi;
 
-    ASSERT(dev && dev->parent.init && msg && bus->parent.init);
+    LL_ASSERT(dev && dev->parent.init && msg && bus->parent.init);
     if (!msg->size)
         return 0;
     msg->dev = dev;
-    if (bus->parent.drv_mode & (__DRIVER_MODE_ASYNC_WRITE | __DRIVER_MODE_ASYNC_READ))
+    if (bus->parent.drv_mode & (__LL_DRV_MODE_ASYNC_WRITE | __LL_DRV_MODE_ASYNC_READ))
     {
         int res;
         msg->thread = xTaskGetCurrentTaskHandle();
@@ -270,10 +272,17 @@ int spi_sync(struct spi_dev *dev, struct spi_msg *msg)
         return spi_poll_xfer(msg);
 }
 
-int spi_async(struct spi_dev *dev, struct spi_msg *msg)
+/**
+ * @brief spi异步传输
+ *
+ * @param dev 指向spi设备的指针
+ * @param msg 指向消息队列的指针
+ * @return int 成功返回0，失败返回一个负数
+ */
+int ll_spi_async(struct ll_spi_dev *dev, struct ll_spi_msg *msg)
 {
-    ASSERT(dev && dev->parent.init && msg && dev->spi->parent.init &&
-           dev->spi->parent.drv_mode & (__DRIVER_MODE_ASYNC_WRITE | __DRIVER_MODE_ASYNC_READ));
+    LL_ASSERT(dev && dev->parent.init && msg && dev->spi->parent.init &&
+              dev->spi->parent.drv_mode & (__LL_DRV_MODE_ASYNC_WRITE | __LL_DRV_MODE_ASYNC_READ));
     if (!msg->size)
         return 0;
     msg->dev = dev;
@@ -281,16 +290,23 @@ int spi_async(struct spi_dev *dev, struct spi_msg *msg)
     return spi_int_trans(msg);
 }
 
-int spi_config(struct spi_dev *dev, struct spi_conf *conf)
+/**
+ * @brief 配置spi的属性
+ *
+ * @param dev 指向spi设备的指针
+ * @param conf 指向spi_conf的指针
+ * @return int 成功返回0，失败返回一个负数
+ */
+int ll_spi_config(struct ll_spi_dev *dev, struct ll_spi_conf *conf)
 {
     uint32_t temp;
     int res;
 
-    ASSERT(dev && conf);
+    LL_ASSERT(dev && conf);
     temp = taskENTER_CRITICAL_FROM_ISR();
     if (!dev->spi->send_busy)
     {
-        memcpy(&dev->conf, conf, sizeof(struct spi_conf));
+        memcpy(&dev->conf, conf, sizeof(struct ll_spi_conf));
         res = dev->spi->ops->config(dev);
     }
     else
@@ -307,12 +323,12 @@ int spi_config(struct spi_dev *dev, struct spi_conf *conf)
  * @param size 需要传输spi_trans的数量
  * @param complete 用来通知传输完成的回调函数
  */
-void spi_msg_init(struct spi_msg *msg,
-                  struct spi_trans *trans,
-                  size_t size,
-                  void (*complete)(int res))
+void ll_spi_msg_init(struct ll_spi_msg *msg,
+                     struct ll_spi_trans *trans,
+                     size_t size,
+                     void (*complete)(int res))
 {
-    ASSERT(msg && trans);
+    LL_ASSERT(msg && trans);
     if (!size)
         return;
     msg->trans = trans;
@@ -329,20 +345,20 @@ void spi_msg_init(struct spi_msg *msg,
  * @param bus 指向spi总线的指针
  * @return int 成功返回0，失败返回一个负数
  */
-int spi_bus_init(struct spi_bus *bus)
+int ll_spi_bus_init(struct ll_spi_bus *bus)
 {
-    ASSERT(bus);
+    LL_ASSERT(bus);
     bus->parent.init_count++;
     if (bus->parent.init_count > 1)
         return 0;
     bus->parent.init = 1;
     bus->dev = NULL;
-    list_head_init(&bus->msg_head);
-    list_head_init(&bus->dev_head);
+    ll_list_head_init(&bus->msg_head);
+    ll_list_head_init(&bus->dev_head);
     bus->trans_index = 0;
     bus->send_busy = 0;
     bus->cs_numb = 0;
-    if (bus->parent.drv_mode & (__DRIVER_MODE_ASYNC_READ | __DRIVER_MODE_ASYNC_WRITE))
+    if (bus->parent.drv_mode & (__LL_DRV_MODE_ASYNC_READ | __LL_DRV_MODE_ASYNC_WRITE))
         bus->lock = NULL;
     else
     {
@@ -360,36 +376,32 @@ int spi_bus_init(struct spi_bus *bus)
  * @param bus 指向spi总线的指针
  * @return int 成功返回0，失败返回一个负数
  */
-int spi_bus_deinit(struct spi_bus *bus)
+int ll_spi_bus_deinit(struct ll_spi_bus *bus)
 {
-    ASSERT(bus);
+    LL_ASSERT(bus);
     if (bus->parent.init_count == 0)
     {
-        DEBUG("spi has not been initialized");
+        LL_DEBUG("spi has not been initialized");
         return -EINVAL;
     }
     if (--bus->parent.init_count)
         return 0;
-    if (bus->send_busy)
-        return -EAGAIN;
+    if (bus->parent.drv_mode & (__LL_DRV_MODE_ASYNC_WRITE | __LL_DRV_MODE_ASYNC_READ))
+    {
+        if (bus->send_busy)
+            return -EAGAIN;
+    }
+    else
+    {
+        if (xSemaphoreGetMutexHolder(bus->lock))
+            return -EAGAIN;
+    }
     bus->dev = NULL;
     bus->trans_index = 0;
     bus->cs_numb = 0;
-    if (!(bus->parent.drv_mode & (__DRIVER_MODE_ASYNC_READ | __DRIVER_MODE_ASYNC_WRITE)))
+    if (!(bus->parent.drv_mode & (__LL_DRV_MODE_ASYNC_READ | __LL_DRV_MODE_ASYNC_WRITE)))
         vSemaphoreDelete(bus->lock);
     return 0;
-}
-
-/**
- * @brief 通过名字来获取spi
- *
- * @param name 想要查找的spi名字
- * @return struct spi_bus* 成功返回spi总线的指针，失败返回NULL
- */
-struct spi_bus *spi_bus_find_by_name(const char *name)
-{
-    ASSERT(name);
-    return (struct spi_bus *)object_find_by_name(&head, name);
 }
 
 /**
@@ -397,25 +409,25 @@ struct spi_bus *spi_bus_find_by_name(const char *name)
  *
  * @param bus 想要查找的spi总线
  * @param name 想要查找的设备名字
- * @return struct spi_dev* 成功返回spi设备的指针，失败返回NULL
+ * @return struct ll_spi_dev* 成功返回spi设备的指针，失败返回NULL
  */
-struct spi_dev *spi_dev_find_by_name(struct spi_bus *bus, const char *name)
+struct ll_spi_dev *ll_spi_dev_find_by_name(struct ll_spi_bus *bus, const char *name)
 {
-    ASSERT(bus && name);
-    return (struct spi_dev *)object_find_by_name(&bus->dev_head, name);
+    LL_ASSERT(bus && name);
+    return (struct ll_spi_dev *)ll_obj_find_by_name(&bus->dev_head, name);
 }
 
-static inline bool spi_cs_is_used(struct spi_dev *dev)
+static inline bool spi_cs_is_used(struct ll_spi_dev *dev)
 {
-    struct list_node *node;
-    struct list_node *temp;
+    struct ll_list_node *node;
+    struct ll_list_node *temp;
 
-    FOR_EACH_LIST_NODE_SAFE(&dev->spi->dev_head, node, temp)
+    LL_FOR_EACH_LIST_NODE_SAFE(&dev->spi->dev_head, node, temp)
     {
-        struct spi_dev *dev_node = (struct spi_dev *)node;
-        if ((dev->conf.cs_mode == __SPI_HARD_CS && dev_node->conf.cs_mode == __SPI_HARD_CS &&
+        struct ll_spi_dev *dev_node = (struct ll_spi_dev *)node;
+        if ((dev->conf.cs_mode == __LL_SPI_HARD_CS && dev_node->conf.cs_mode == __LL_SPI_HARD_CS &&
              dev->cs_index == dev_node->cs_index) ||
-            (dev->conf.cs_mode == __SPI_SOFT_CS && dev_node->conf.cs_mode == __SPI_SOFT_CS &&
+            (dev->conf.cs_mode == __LL_SPI_SOFT_CS && dev_node->conf.cs_mode == __LL_SPI_SOFT_CS &&
              dev->cs_pin == dev_node->cs_pin))
             return true;
     }
@@ -432,43 +444,43 @@ static inline bool spi_cs_is_used(struct spi_dev *dev)
  * @param drv_mode spi设备的驱动模式
  * @return int 成功返回0，失败返回一个负数
  */
-int spi_dev_register(struct spi_dev *dev,
-                     const char *name,
-                     const char *spi_bus,
-                     void *priv,
-                     int drv_mode)
+int ll_spi_dev_register(struct ll_spi_dev *dev,
+                        const char *name,
+                        const char *spi_bus,
+                        void *priv,
+                        int drv_mode)
 {
     int res;
 
-    ASSERT(dev && name && spi_bus);
-    __driver_init(&dev->parent, name, priv, drv_mode);
-    dev->spi = spi_bus_find_by_name(spi_bus);
+    LL_ASSERT(dev && name && spi_bus);
+    __ll_drv_init(&dev->parent, name, priv, drv_mode);
+    dev->spi = (struct ll_spi_bus *)ll_drv_find_by_name(spi_bus);
     if (!dev->spi)
     {
-        ERROR("cannot find %s", spi_bus);
+        LL_ERROR("cannot find %s", spi_bus);
         return -EIO;
     }
     //检查片选设置是否正确
-    if (dev->conf.cs_mode == __SPI_HARD_CS)
+    if (dev->conf.cs_mode == __LL_SPI_HARD_CS)
     {
         if (dev->cs_index >= dev->spi->cs_hard_max_numb || dev->spi->cs_numb >= dev->spi->cs_hard_max_numb)
         {
-            ERROR("spi hard cs error");
+            LL_ERROR("spi hard cs error");
             return -EIO;
         }
     }
-    else if (dev->conf.cs_mode == __SPI_SOFT_CS)
-        ASSERT(dev->cs_pin);
+    else if (dev->conf.cs_mode == __LL_SPI_SOFT_CS)
+        LL_ASSERT(dev->cs_pin);
     //检查片选是否占用或重复注册
     if (spi_cs_is_used(dev))
     {
-        ERROR("the cs has been used");
+        LL_ERROR("the cs has been used");
         return -EEXIST;
     }
-    res = spi_bus_init(dev->spi);
+    res = ll_spi_bus_init(dev->spi);
     if (res)
         return res;
-    list_add_tail(&dev->spi->dev_head, &dev->parent.parent.node);
+    ll_list_add_tail(&dev->spi->dev_head, &dev->parent.parent.node);
     dev->spi->cs_numb++;
     dev->parent.init = 1;
 
@@ -481,15 +493,26 @@ int spi_dev_register(struct spi_dev *dev,
  * @param dev 指向spi设备的指针
  * @return int 成功返回0，失败返回一个负数
  */
-int spi_dev_unregister(struct spi_dev *dev)
+int ll_spi_dev_unregister(struct ll_spi_dev *dev)
 {
-    ASSERT(dev && dev->spi);
-    if (dev->spi->dev == dev && dev->spi->send_busy)
-        return -EAGAIN;
-    if (spi_bus_deinit(dev->spi))
+    LL_ASSERT(dev && dev->spi);
+    if (dev->spi->dev == dev)
+    {
+        if (dev->spi->parent.drv_mode & (__LL_DRV_MODE_ASYNC_WRITE | __LL_DRV_MODE_ASYNC_READ))
+        {
+            if (dev->spi->send_busy)
+                return -EAGAIN;
+        }
+        else
+        {
+            if (xSemaphoreGetMutexHolder(dev->spi->lock))
+                return -EAGAIN;
+        }
+    }
+    if (ll_spi_bus_deinit(dev->spi))
         return -EAGAIN;
     dev->parent.init = 0;
-    list_delete(&dev->parent.parent.node);
+    ll_list_delete(&dev->parent.parent.node);
     dev->spi->cs_numb--;
     dev->spi = NULL;
 

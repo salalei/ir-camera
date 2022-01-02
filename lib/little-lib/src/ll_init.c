@@ -1,7 +1,7 @@
 /**
- * @file start_kernel.c
+ * @file ll_init.c
  * @author salalei (1028609078@qq.com)
- * @brief 内核启动部分
+ * @brief 自动初始化部分
  * @version 0.1
  * @date 2021-12-18
  *
@@ -11,14 +11,14 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
-#include "init.h"
+#include "ll_init.h"
 
-int do_one_initcall(int fn)
+static int do_one_initcall(int fn)
 {
     return ((__initcall_t)fn)();
 }
 
-int do_initcall(int *start, int *end)
+static int do_initcall(int *start, int *end)
 {
     for (int *fn = start; fn < end; fn++)
     {
@@ -72,7 +72,7 @@ static void first_thread(void *param)
     vTaskDelete(NULL);
 }
 
-void __entry(void)
+void __ll_entry(void)
 {
     taskDISABLE_INTERRUPTS();
     early_initcall();

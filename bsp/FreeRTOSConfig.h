@@ -8,7 +8,6 @@
  * @copyright Copyright (c) 2021
  *
  */
-#include "types.h"
 
 #ifndef FREERTOS_CONFIG_H
 #define FREERTOS_CONFIG_H
@@ -58,8 +57,9 @@
 #define configKERNEL_INTERRUPT_PRIORITY      (configLIBRARY_LOWEST_INTERRUPT_PRIORITY << (8 - configPRIO_BITS))
 #define configMAX_SYSCALL_INTERRUPT_PRIORITY (configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY << (8 - configPRIO_BITS))
 
-#ifdef USING_ASSERT
-#define configASSERT(x) ASSERT(x)
+#include "ll_assert.h"
+#ifdef LL_USING_ASSERT
+#define configASSERT(x) LL_ASSERT(x)
 #endif
 
 #define INCLUDE_vTaskPrioritySet            0

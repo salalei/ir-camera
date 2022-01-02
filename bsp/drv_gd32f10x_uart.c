@@ -12,19 +12,19 @@
 #ifdef bool
 #undef bool
 #endif
-#include "../lib/little-lib/drivers/serial.h"
-#include "dbg.h"
-#include "init.h"
+#include "ll_init.h"
+#include "ll_log.h"
+#include "ll_serial.h"
 
 struct gd32f10x_uart_handle
 {
-    struct serial parent;
+    struct ll_serial parent;
     uint32_t uart;
     uint32_t send_dma;
     dma_channel_enum dma_channel;
 };
 
-static int poll_getc(struct serial *handle)
+static int poll_getc(struct ll_serial *handle)
 {
     struct gd32f10x_uart_handle *p = (struct gd32f10x_uart_handle *)handle;
 
@@ -34,7 +34,7 @@ static int poll_getc(struct serial *handle)
         return -EINVAL;
 }
 
-static int poll_putc(struct serial *handle, int ch)
+static int poll_putc(struct ll_serial *handle, int ch)
 {
     struct gd32f10x_uart_handle *p = (struct gd32f10x_uart_handle *)handle;
 
@@ -45,7 +45,7 @@ static int poll_putc(struct serial *handle, int ch)
     return 0;
 }
 
-static ssize_t irq_send(struct serial *handle, const void *buf, size_t size)
+static ssize_t irq_send(struct ll_serial *handle, const void *buf, size_t size)
 {
     struct gd32f10x_uart_handle *p = (struct gd32f10x_uart_handle *)handle;
 
@@ -55,7 +55,7 @@ static ssize_t irq_send(struct serial *handle, const void *buf, size_t size)
     return (ssize_t)size;
 }
 
-static int config(struct serial *handle, struct serial_conf *conf)
+static int config(struct ll_serial *handle, struct ll_serial_conf *conf)
 {
     struct gd32f10x_uart_handle *p = (struct gd32f10x_uart_handle *)handle;
 
@@ -67,35 +67,35 @@ static int config(struct serial *handle, struct serial_conf *conf)
         usart_word_length_set(p->uart, USART_WL_9BIT);
     else
     {
-        WARN("cannot set uart data bit to %d", conf->data_bit);
+        LL_WARN("cannot set uart data bit to %d", conf->data_bit);
         return -EINVAL;
     }
 
-    if (conf->stop_bit == SERIAL_STOP_1BIT)
+    if (conf->stop_bit == LL_SERIAL_STOP_1BIT)
         usart_stop_bit_set(p->uart, USART_STB_1BIT);
-    else if (conf->stop_bit == SERIAL_STOP_1_5BIT)
+    else if (conf->stop_bit == LL_SERIAL_STOP_1_5BIT)
         usart_stop_bit_set(p->uart, USART_STB_1_5BIT);
-    else if (conf->stop_bit == SERIAL_STOP_2BIT)
+    else if (conf->stop_bit == LL_SERIAL_STOP_2BIT)
         usart_stop_bit_set(p->uart, USART_STB_2BIT);
 
-    if (conf->parity == SERIAL_PARITY_NONE)
+    if (conf->parity == LL_SERIAL_PARITY_NONE)
         usart_parity_config(p->uart, USART_PM_NONE);
-    else if (conf->parity == SERIAL_PARITY_ODD)
+    else if (conf->parity == LL_SERIAL_PARITY_ODD)
         usart_parity_config(p->uart, USART_PM_ODD);
-    else if (conf->parity == SERIAL_PARITY_EVEN)
+    else if (conf->parity == LL_SERIAL_PARITY_EVEN)
         usart_parity_config(p->uart, USART_PM_EVEN);
 
-    if (conf->flow_ctrl == SERIAL_FLOW_CTRL_NONE)
+    if (conf->flow_ctrl == LL_SERIAL_FLOW_CTRL_NONE)
     {
         usart_hardware_flow_cts_config(p->uart, USART_CTS_DISABLE);
         usart_hardware_flow_rts_config(p->uart, USART_RTS_DISABLE);
     }
-    else if (conf->flow_ctrl == SERIAL_FLOW_CTRL_SOFTWARE)
+    else if (conf->flow_ctrl == LL_SERIAL_FLOW_CTRL_SOFTWARE)
     {
-        WARN("cannot set uart software control");
+        LL_WARN("cannot set uart software control");
         return -EINVAL;
     }
-    else if (conf->flow_ctrl == SERIAL_FLOW_CTRL_HARDWARE)
+    else if (conf->flow_ctrl == LL_SERIAL_FLOW_CTRL_HARDWARE)
     {
         usart_hardware_flow_cts_config(p->uart, USART_CTS_ENABLE);
         usart_hardware_flow_rts_config(p->uart, USART_RTS_ENABLE);
@@ -105,7 +105,7 @@ static int config(struct serial *handle, struct serial_conf *conf)
     return 0;
 }
 
-static void stop_send(struct serial *handle)
+static void stop_send(struct ll_serial *handle)
 {
     struct gd32f10x_uart_handle *p = (struct gd32f10x_uart_handle *)handle;
 
@@ -113,7 +113,7 @@ static void stop_send(struct serial *handle)
     dma_interrupt_flag_clear(p->send_dma, p->dma_channel, DMA_INT_FLAG_G);
 }
 
-static void recv_ctrl(struct serial *handle, bool enabled)
+static void recv_ctrl(struct ll_serial *handle, bool enabled)
 {
     struct gd32f10x_uart_handle *p = (struct gd32f10x_uart_handle *)handle;
 
@@ -130,7 +130,7 @@ static void recv_ctrl(struct serial *handle, bool enabled)
     }
 }
 
-const static struct serial_ops ops = {
+const static struct ll_serial_ops ops = {
     .poll_get_char = poll_getc,
     .poll_put_char = poll_putc,
     .irq_send = irq_send,
@@ -144,7 +144,7 @@ static void uart_handler(struct gd32f10x_uart_handle *handle)
     if (usart_interrupt_flag_get(handle->uart, USART_INT_FLAG_RBNE))
     {
         usart_interrupt_flag_clear(handle->uart, USART_INT_FLAG_RBNE);
-        __serial_recv_push(&handle->parent, &(uint8_t){usart_data_receive(handle->uart)}, 1);
+        __ll_serial_recv_push(&handle->parent, &(uint8_t){usart_data_receive(handle->uart)}, 1);
     }
 }
 
@@ -154,7 +154,7 @@ static void send_dma_handler(struct gd32f10x_uart_handle *handle)
     {
         dma_interrupt_flag_clear(handle->send_dma, handle->dma_channel, DMA_INT_FLAG_G);
         dma_channel_disable(handle->send_dma, handle->dma_channel);
-        __serial_send_irq_handler(&handle->parent);
+        __ll_serial_send_irq_handler(&handle->parent);
     }
 }
 
@@ -220,6 +220,6 @@ static int bsp_uart_init(void)
     uart0.send_dma = DMA0;
     uart0.dma_channel = DMA_CH3;
     uart0.parent.ops = &ops;
-    return __serial_register(&uart0.parent, "uart0", NULL, __DRIVER_MODE_ASYNC_WRITE | __DRIVER_MODE_ASYNC_READ);
+    return __ll_serial_register(&uart0.parent, "uart0", NULL, __LL_DRV_MODE_ASYNC_WRITE | __LL_DRV_MODE_ASYNC_READ);
 }
-BOARD_INITCALL(bsp_uart_init);
+LL_BOARD_INITCALL(bsp_uart_init);

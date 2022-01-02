@@ -9,8 +9,8 @@
  *
  */
 #include "board.h"
-#include "driver.h"
-#include "init.h"
+#include "ll_0_96_lcd.h"
+#include "ll_init.h"
 
 static int board_init(void)
 {
@@ -18,10 +18,10 @@ static int board_init(void)
     nvic_priority_group_set(NVIC_PRIGROUP_PRE4_SUB0);
     return 0;
 }
-EARLY_INITCALL(board_init);
+LL_EARLY_INITCALL(board_init);
 
 static int lcd_init(void)
 {
-    return drv_0_96_lcd_init("lcd", "lcd res", "lcd dc", "lcd cs", "spi0");
+    return ll_0_96_lcd_init("lcd", "lcd res", "lcd dc", "lcd cs", "spi0");
 }
-LATE_INITCALL(lcd_init);
+LL_LATE_INITCALL(lcd_init);

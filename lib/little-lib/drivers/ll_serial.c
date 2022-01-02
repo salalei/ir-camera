@@ -1,5 +1,5 @@
 /**
- * @file serial.c
+ * @file ll_serial.c
  * @author salalei (1028609078@qq.com)
  * @brief 串口驱动框架
  * @version 0.1
@@ -8,19 +8,14 @@
  * @copyright Copyright (c) 2021
  *
  */
-#include "serial.h"
-#include "../modules/list.h"
-#include "../modules/object.h"
-#include "dbg.h"
+#include "ll_serial.h"
+#include "ll_log.h"
 
 #include "semphr.h"
 #include "task.h"
-
 #include <string.h>
 
-static struct list_node head = LIST_HEAD_INIT_INS(head);
-
-static void exec_user_cb(struct serial *serial, int type, void *arg)
+static void exec_user_cb(struct ll_serial *serial, int type, void *arg)
 {
     void (*cb)(void *priv, int type, void *arg);
     void *priv;
@@ -35,14 +30,14 @@ static void exec_user_cb(struct serial *serial, int type, void *arg)
         cb(priv, type, arg);
 }
 
-static ssize_t fifo_irq_send(struct serial *serial)
+static ssize_t fifo_irq_send(struct ll_serial *serial)
 {
     size_t size;
     uint32_t temp;
 
     temp = taskENTER_CRITICAL_FROM_ISR();
-    fifo_clear(&serial->send_fifo, serial->last_send_size);
-    size = fifo_data_size(&serial->send_fifo);
+    ll_fifo_clear(&serial->send_fifo, serial->last_send_size);
+    size = ll_fifo_data_size(&serial->send_fifo);
     if (!size)
     {
         serial->last_send_size = 0;
@@ -55,7 +50,7 @@ static ssize_t fifo_irq_send(struct serial *serial)
         size_t pos;
         ssize_t res;
         taskEXIT_CRITICAL_FROM_ISR(temp);
-        pos = FIFO_READ_POS(serial->send_fifo.read_pos);
+        pos = LL_FIFO_READ_POS(serial->send_fifo.read_pos);
         if (pos + size >= serial->send_fifo.size)
             size = serial->send_fifo.size - pos;
         serial->last_send_size = size;
@@ -71,11 +66,11 @@ static ssize_t fifo_irq_send(struct serial *serial)
  *
  * @param serial 指向串口的指针
  */
-void __serial_send_irq_handler(struct serial *serial)
+void __ll_serial_send_irq_handler(struct ll_serial *serial)
 {
     uint32_t temp;
 
-    ASSERT(serial && serial->parent.drv_mode & __DRIVER_MODE_ASYNC_WRITE);
+    LL_ASSERT(serial && serial->parent.drv_mode & __LL_DRV_MODE_ASYNC_WRITE);
     if (fifo_irq_send(serial))
         return;
     temp = taskENTER_CRITICAL_FROM_ISR();
@@ -89,7 +84,7 @@ void __serial_send_irq_handler(struct serial *serial)
     else
     {
         taskEXIT_CRITICAL_FROM_ISR(temp);
-        exec_user_cb(serial, USER_CB_TYPE_SEND_COMPLETE, NULL);
+        exec_user_cb(serial, LL_CB_SEND_COMPLETE, NULL);
     }
 }
 
@@ -100,15 +95,15 @@ void __serial_send_irq_handler(struct serial *serial)
  * @param buf 指向驱动接受的数据的指针
  * @param size 驱动接受到的数据大小
  */
-void __serial_recv_push(struct serial *serial, const uint8_t *buf, size_t size)
+void __ll_serial_recv_push(struct ll_serial *serial, const uint8_t *buf, size_t size)
 {
     uint32_t temp;
 
-    ASSERT(serial && buf && serial->parent.drv_mode & __DRIVER_MODE_ASYNC_READ);
+    LL_ASSERT(serial && buf && serial->parent.drv_mode & __LL_DRV_MODE_ASYNC_READ);
 
     if (!size)
         return;
-    fifo_push(&serial->recv_fifo, buf, size);
+    ll_fifo_push(&serial->recv_fifo, buf, size);
     temp = taskENTER_CRITICAL_FROM_ISR();
     if (serial->recv_thread)
     {
@@ -120,7 +115,7 @@ void __serial_recv_push(struct serial *serial, const uint8_t *buf, size_t size)
     else
     {
         taskEXIT_CRITICAL_FROM_ISR(temp);
-        exec_user_cb(serial, USER_CB_TYPE_RECV_COMPLETE, NULL);
+        exec_user_cb(serial, LL_CB_RECV_COMPLETE, NULL);
     }
 }
 
@@ -133,47 +128,47 @@ void __serial_recv_push(struct serial *serial, const uint8_t *buf, size_t size)
  * @param drv_mode 底层驱动给定的工作模式
  * @return int 返回0
  */
-int __serial_register(struct serial *serial,
-                      const char *name,
-                      void *priv,
-                      int drv_mode)
+int __ll_serial_register(struct ll_serial *serial,
+                         const char *name,
+                         void *priv,
+                         int drv_mode)
 {
-    ASSERT(serial && name && serial->ops && serial->ops->config && serial->ops->poll_get_char && serial->ops->poll_put_char);
-    if (drv_mode & __DRIVER_MODE_ASYNC_WRITE)
+    LL_ASSERT(serial && name && serial->ops && serial->ops->config && serial->ops->poll_get_char && serial->ops->poll_put_char);
+    if (drv_mode & __LL_DRV_MODE_ASYNC_WRITE)
     {
-        ASSERT(serial->ops->irq_send && serial->ops->stop_send);
-        drv_mode |= __DRIVER_MODE_WRITE;
+        LL_ASSERT(serial->ops->irq_send && serial->ops->stop_send);
+        drv_mode |= __LL_DRV_MODE_WRITE;
     }
-    if (drv_mode & __DRIVER_MODE_ASYNC_READ)
+    if (drv_mode & __LL_DRV_MODE_ASYNC_READ)
     {
-        ASSERT(serial->ops->recv_ctrl);
-        drv_mode |= __DRIVER_MODE_READ;
+        LL_ASSERT(serial->ops->recv_ctrl);
+        drv_mode |= __LL_DRV_MODE_READ;
     }
 
-    __driver_init(&serial->parent, name, priv, drv_mode);
+    __ll_drv_init(&serial->parent, name, priv, drv_mode);
     serial->send_busy = 0;
     serial->recv_busy = 0;
     serial->send_fifo_empty = 1;
     serial->conf.baud = 115200;
     serial->conf.data_bit = 8;
-    serial->conf.parity = SERIAL_PARITY_NONE;
-    serial->conf.stop_bit = SERIAL_STOP_1BIT;
-    serial->conf.flow_ctrl = SERIAL_FLOW_CTRL_NONE;
+    serial->conf.parity = LL_SERIAL_PARITY_NONE;
+    serial->conf.stop_bit = LL_SERIAL_STOP_1BIT;
+    serial->conf.flow_ctrl = LL_SERIAL_FLOW_CTRL_NONE;
     serial->recv_byte_timeout = 0;
     serial->last_send_size = 0;
-    fifo_deinit(&serial->send_fifo);
-    fifo_deinit(&serial->recv_fifo);
+    ll_fifo_deinit(&serial->send_fifo);
+    ll_fifo_deinit(&serial->recv_fifo);
     serial->send_thread = NULL;
     serial->recv_thread = NULL;
     serial->user_cb = NULL;
     serial->priv = NULL;
 
-    list_add_tail(&head, &serial->parent.parent.node);
+    __ll_drv_register(&serial->parent);
 
     return 0;
 }
 
-static inline ssize_t poll_send(struct serial *serial, const void *buf, size_t size)
+static inline ssize_t poll_send(struct ll_serial *serial, const void *buf, size_t size)
 {
     size_t index = 0;
     const uint8_t *pbuf = (const uint8_t *)buf;
@@ -204,11 +199,11 @@ static inline ssize_t poll_send(struct serial *serial, const void *buf, size_t s
     return (ssize_t)index;
 }
 
-static inline ssize_t fifo_send_nonblock(struct serial *serial, const void *buf, size_t size)
+static inline ssize_t fifo_send_nonblock(struct ll_serial *serial, const void *buf, size_t size)
 {
     uint32_t temp;
 
-    size = fifo_push(&serial->send_fifo, buf, size);
+    size = ll_fifo_push(&serial->send_fifo, buf, size);
     temp = taskENTER_CRITICAL_FROM_ISR();
     if (serial->send_fifo_empty && size)
     {
@@ -221,7 +216,7 @@ static inline ssize_t fifo_send_nonblock(struct serial *serial, const void *buf,
     return (ssize_t)size;
 }
 
-static inline ssize_t fifo_send_block(struct serial *serial, const void *buf, size_t size)
+static inline ssize_t fifo_send_block(struct ll_serial *serial, const void *buf, size_t size)
 {
     uint32_t temp;
     size_t _size = size;
@@ -229,7 +224,7 @@ static inline ssize_t fifo_send_block(struct serial *serial, const void *buf, si
 
     while (size)
     {
-        len = fifo_push(&serial->send_fifo, buf, size);
+        len = ll_fifo_push(&serial->send_fifo, buf, size);
         temp = taskENTER_CRITICAL_FROM_ISR();
         if (len != size && !serial->send_fifo_empty)
             serial->send_thread = xTaskGetCurrentTaskHandle();
@@ -260,12 +255,12 @@ static inline ssize_t fifo_send_block(struct serial *serial, const void *buf, si
  * @param size 用户写入的数据大小
  * @return ssize_t 成功则返回写入的数据大小，失败则返回
  */
-ssize_t serial_write(struct serial *serial, const void *buf, size_t size)
+ssize_t ll_serial_write(struct ll_serial *serial, const void *buf, size_t size)
 {
     uint32_t temp;
     ssize_t res = 0;
 
-    ASSERT(serial && buf && serial->parent.init && serial->parent.drv_mode & __DRIVER_MODE_WRITE);
+    LL_ASSERT(serial && buf && serial->parent.init && serial->parent.drv_mode & __LL_DRV_MODE_WRITE);
     if (!size)
         return 0;
     temp = taskENTER_CRITICAL_FROM_ISR();
@@ -279,9 +274,9 @@ ssize_t serial_write(struct serial *serial, const void *buf, size_t size)
         serial->send_busy = 1;
         taskEXIT_CRITICAL_FROM_ISR(temp);
     }
-    if (serial->parent.init_mode & DEVICE_MODE_NONBLOCK_WRITE)
+    if (serial->parent.init_mode & LL_DRV_MODE_NONBLOCK_WRITE)
         res = fifo_send_nonblock(serial, buf, size);
-    else if (serial->parent.drv_mode & __DRIVER_MODE_ASYNC_WRITE)
+    else if (serial->parent.drv_mode & __LL_DRV_MODE_ASYNC_WRITE)
         res = fifo_send_block(serial, buf, size);
     else
         res = poll_send(serial, buf, size);
@@ -289,7 +284,7 @@ ssize_t serial_write(struct serial *serial, const void *buf, size_t size)
     return res;
 }
 
-static inline ssize_t poll_recv(struct serial *serial, void *buf, size_t size)
+static inline ssize_t poll_recv(struct ll_serial *serial, void *buf, size_t size)
 {
     size_t index = 0;
     uint32_t tick;
@@ -325,15 +320,15 @@ out:
         return (ssize_t)index;
 }
 
-static inline ssize_t fifo_recv_nonblock(struct serial *serial, void *buf, size_t size)
+static inline ssize_t fifo_recv_nonblock(struct ll_serial *serial, void *buf, size_t size)
 {
     ssize_t res;
 
-    res = (ssize_t)fifo_pop(&serial->recv_fifo, buf, size);
+    res = (ssize_t)ll_fifo_pop(&serial->recv_fifo, buf, size);
     return res;
 }
 
-static ssize_t fifo_recv_block(struct serial *serial, void *buf, size_t size)
+static ssize_t fifo_recv_block(struct ll_serial *serial, void *buf, size_t size)
 {
     uint32_t temp;
     size_t br = size;
@@ -342,7 +337,7 @@ static ssize_t fifo_recv_block(struct serial *serial, void *buf, size_t size)
 
     while (1)
     {
-        size_t len = fifo_pop(&serial->recv_fifo, buf, br);
+        size_t len = ll_fifo_pop(&serial->recv_fifo, buf, br);
         uint32_t cur_ticks = xTaskGetTickCount();
 
         br -= len;
@@ -351,7 +346,7 @@ static ssize_t fifo_recv_block(struct serial *serial, void *buf, size_t size)
         buf += len;
 
         temp = taskENTER_CRITICAL_FROM_ISR();
-        if (fifo_data_size(&serial->recv_fifo) < br && !fifo_is_full(&serial->recv_fifo))
+        if (ll_fifo_data_size(&serial->recv_fifo) < br && !ll_fifo_is_full(&serial->recv_fifo))
             serial->recv_thread = xTaskGetCurrentTaskHandle();
         taskEXIT_CRITICAL_FROM_ISR(temp);
         if (serial->recv_thread)
@@ -374,12 +369,12 @@ static ssize_t fifo_recv_block(struct serial *serial, void *buf, size_t size)
  * @param size 用户想要读取的数据大小
  * @return ssize_t 读取成功返回实际读取的数据大小，若失败则返回一个负数
  */
-ssize_t serial_read(struct serial *serial, void *buf, size_t size)
+ssize_t ll_serial_read(struct ll_serial *serial, void *buf, size_t size)
 {
     uint32_t temp;
     ssize_t res = 0;
 
-    ASSERT(serial && buf && serial->parent.init && serial->parent.drv_mode & __DRIVER_MODE_READ);
+    LL_ASSERT(serial && buf && serial->parent.init && serial->parent.drv_mode & __LL_DRV_MODE_READ);
     if (!size)
         return 0;
     temp = taskENTER_CRITICAL_FROM_ISR();
@@ -393,9 +388,9 @@ ssize_t serial_read(struct serial *serial, void *buf, size_t size)
         serial->recv_busy = 1;
         taskEXIT_CRITICAL_FROM_ISR(temp);
     }
-    if (serial->parent.init_mode & DEVICE_MODE_NONBLOCK_READ)
+    if (serial->parent.init_mode & LL_DRV_MODE_NONBLOCK_READ)
         res = fifo_recv_nonblock(serial, buf, size);
-    else if (serial->parent.drv_mode & __DRIVER_MODE_ASYNC_READ)
+    else if (serial->parent.drv_mode & __LL_DRV_MODE_ASYNC_READ)
         res = fifo_recv_block(serial, buf, size);
     else
         res = poll_recv(serial, buf, size);
@@ -410,17 +405,17 @@ ssize_t serial_read(struct serial *serial, void *buf, size_t size)
  * @param conf 指向用户提供的串口参数
  * @return int 成功返回0，失败返回一个负数
  */
-int serial_config(struct serial *serial, struct serial_conf *conf)
+int ll_serial_config(struct ll_serial *serial, struct ll_serial_conf *conf)
 {
     uint32_t temp;
     int res;
 
-    ASSERT(serial && conf && serial->parent.init &&
-           conf->baud &&
-           conf->data_bit >= 5 && conf->data_bit <= 9 &&
-           conf->stop_bit <= SERIAL_STOP_2BIT &&
-           conf->parity <= SERIAL_PARITY_EVEN &&
-           conf->flow_ctrl <= SERIAL_FLOW_CTRL_SOFTWARE);
+    LL_ASSERT(serial && conf && serial->parent.init &&
+              conf->baud &&
+              conf->data_bit >= 5 && conf->data_bit <= 9 &&
+              conf->stop_bit <= LL_SERIAL_STOP_2BIT &&
+              conf->parity <= LL_SERIAL_PARITY_EVEN &&
+              conf->flow_ctrl <= LL_SERIAL_FLOW_CTRL_SOFTWARE);
 
     temp = taskENTER_CRITICAL_FROM_ISR();
     if (serial->send_busy || serial->recv_busy)
@@ -432,7 +427,7 @@ int serial_config(struct serial *serial, struct serial_conf *conf)
     serial->conf = *conf;
     res = serial->ops->config(serial, &serial->conf);
     if (res)
-        ERROR("failed to config serial");
+        LL_ERROR("failed to config serial");
     return res;
 }
 
@@ -443,10 +438,10 @@ int serial_config(struct serial *serial, struct serial_conf *conf)
  * @param conf 指向用户用于保存当前串口参数的数据
  * @return int 成功返回0，失败返回一个负数
  */
-int serial_get_config(struct serial *serial, struct serial_conf *conf)
+int ll_serial_get_config(struct ll_serial *serial, struct ll_serial_conf *conf)
 {
-    ASSERT(serial && conf && serial->parent.init);
-    memcpy(conf, &serial->conf, sizeof(struct serial_conf));
+    LL_ASSERT(serial && conf && serial->parent.init);
+    memcpy(conf, &serial->conf, sizeof(struct ll_serial_conf));
     return 0;
 }
 
@@ -461,28 +456,28 @@ int serial_get_config(struct serial *serial, struct serial_conf *conf)
  * @param read_buf_size 读缓存区大小
  * @return int 成功返回0，失败返回一个负数
  */
-int serial_init(struct serial *serial,
-                int mode,
-                uint8_t *write_buf, size_t write_buf_size,
-                uint8_t *read_buf, size_t read_buf_size)
+int ll_serial_init(struct ll_serial *serial,
+                   int mode,
+                   uint8_t *write_buf, size_t write_buf_size,
+                   uint8_t *read_buf, size_t read_buf_size)
 {
     int res = 0;
 
-    ASSERT(serial);
+    LL_ASSERT(serial);
     if (serial->parent.init)
     {
-        DEBUG("serial has been initialized");
+        LL_DEBUG("serial has been initialized");
         return -EBUSY;
     }
 
-    if (mode & DEVICE_MODE_NONBLOCK_WRITE)
-        mode |= DEVICE_MODE_WRITE;
-    if (mode & DEVICE_MODE_NONBLOCK_READ)
-        mode |= DEVICE_MODE_READ;
-    if ((mode & DEVICE_MODE_WRITE && !(serial->parent.drv_mode & __DRIVER_MODE_WRITE)) ||
-        (mode & DEVICE_MODE_READ && !(serial->parent.drv_mode & __DRIVER_MODE_READ)) ||
-        (mode & DEVICE_MODE_NONBLOCK_WRITE && !(serial->parent.drv_mode & __DRIVER_MODE_ASYNC_WRITE)) ||
-        (mode & DEVICE_MODE_NONBLOCK_READ && !(serial->parent.drv_mode & __DRIVER_MODE_ASYNC_READ)))
+    if (mode & LL_DRV_MODE_NONBLOCK_WRITE)
+        mode |= LL_DRV_MODE_WRITE;
+    if (mode & LL_DRV_MODE_NONBLOCK_READ)
+        mode |= LL_DRV_MODE_READ;
+    if ((mode & LL_DRV_MODE_WRITE && !(serial->parent.drv_mode & __LL_DRV_MODE_WRITE)) ||
+        (mode & LL_DRV_MODE_READ && !(serial->parent.drv_mode & __LL_DRV_MODE_READ)) ||
+        (mode & LL_DRV_MODE_NONBLOCK_WRITE && !(serial->parent.drv_mode & __LL_DRV_MODE_ASYNC_WRITE)) ||
+        (mode & LL_DRV_MODE_NONBLOCK_READ && !(serial->parent.drv_mode & __LL_DRV_MODE_ASYNC_READ)))
         return -EIO;
 
     serial->parent.init_mode = (uint16_t)mode;
@@ -491,13 +486,13 @@ int serial_init(struct serial *serial,
     serial->send_fifo_empty = 1;
     serial->conf.baud = 115200;
     serial->conf.data_bit = 8;
-    serial->conf.parity = SERIAL_PARITY_NONE;
-    serial->conf.stop_bit = SERIAL_STOP_1BIT;
-    serial->conf.flow_ctrl = SERIAL_FLOW_CTRL_NONE;
+    serial->conf.parity = LL_SERIAL_PARITY_NONE;
+    serial->conf.stop_bit = LL_SERIAL_STOP_1BIT;
+    serial->conf.flow_ctrl = LL_SERIAL_FLOW_CTRL_NONE;
     serial->recv_byte_timeout = 0;
     serial->last_send_size = 0;
-    fifo_init(&serial->send_fifo, write_buf, write_buf_size);
-    fifo_init(&serial->recv_fifo, read_buf, read_buf_size);
+    ll_fifo_init(&serial->send_fifo, write_buf, write_buf_size);
+    ll_fifo_init(&serial->recv_fifo, read_buf, read_buf_size);
     serial->user_cb = NULL;
     serial->priv = NULL;
 
@@ -507,12 +502,12 @@ int serial_init(struct serial *serial,
     res = serial->ops->config(serial, &serial->conf);
     if (res)
     {
-        ERROR("failed to config serial");
+        LL_ERROR("failed to config serial");
         return res;
     }
 
     serial->parent.init = 1;
-    if (serial->parent.drv_mode & __DRIVER_MODE_ASYNC_READ)
+    if (serial->parent.drv_mode & __LL_DRV_MODE_ASYNC_READ)
         serial->ops->recv_ctrl(serial, true);
 
     return 0;
@@ -524,21 +519,21 @@ int serial_init(struct serial *serial,
  * @param serial 指向串口的指针
  * @return int 注销成功返回0，失败返回一个负数
  */
-int serial_deinit(struct serial *serial)
+int ll_serial_deinit(struct ll_serial *serial)
 {
     if (!serial->parent.init)
     {
-        WARN("serial has not been initialized");
+        LL_WARN("serial has not been initialized");
         return -EINVAL;
     }
     else if (serial->send_busy || serial->recv_busy)
     {
-        WARN("serial is busy");
+        LL_WARN("serial is busy");
         return -EBUSY;
     }
-    if (serial->parent.drv_mode & __DRIVER_MODE_ASYNC_WRITE)
+    if (serial->parent.drv_mode & __LL_DRV_MODE_ASYNC_WRITE)
         serial->ops->stop_send(serial);
-    if (serial->parent.drv_mode & __DRIVER_MODE_ASYNC_READ)
+    if (serial->parent.drv_mode & __LL_DRV_MODE_ASYNC_READ)
         serial->ops->recv_ctrl(serial, false);
     serial->send_thread = NULL;
     serial->recv_thread = NULL;
@@ -555,9 +550,9 @@ int serial_deinit(struct serial *serial)
  * @param serial 指向串口的指针
  * @param timeout 设置的接受超时时间
  */
-void serial_set_recv_timeout(struct serial *serial, uint32_t timeout)
+void ll_serial_set_recv_timeout(struct ll_serial *serial, uint32_t timeout)
 {
-    ASSERT(serial && serial->parent.init);
+    LL_ASSERT(serial && serial->parent.init);
     serial->recv_byte_timeout = timeout;
 }
 
@@ -568,25 +563,13 @@ void serial_set_recv_timeout(struct serial *serial, uint32_t timeout)
  * @param cb 用户提供的回调函数
  * @param priv 用户的私有数据
  */
-void serial_set_cb(struct serial *serial, void (*cb)(void *, int, void *), void *priv)
+void ll_serial_set_cb(struct ll_serial *serial, void (*cb)(void *, int, void *), void *priv)
 {
     uint32_t temp;
 
-    ASSERT(serial);
+    LL_ASSERT(serial);
     temp = taskENTER_CRITICAL_FROM_ISR();
     serial->user_cb = cb;
     serial->priv = priv;
     taskEXIT_CRITICAL_FROM_ISR(temp);
-}
-
-/**
- * @brief 通过名字来获取串口
- *
- * @param name 想要查找的串口名字
- * @return struct serial* 成功返回串口的指针，失败返回NULL
- */
-struct serial *serial_find_by_name(const char *name)
-{
-    ASSERT(name);
-    return (struct serial *)object_find_by_name(&head, name);
 }

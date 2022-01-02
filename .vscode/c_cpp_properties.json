@@ -6,6 +6,7 @@
                 "bsp/",
                 "user/",
                 "lib/little-lib/include/",
+                "lib/little-lib/drivers/include/",
                 "lib/gd32f10x-lib/CMSIS/",
                 "lib/gd32f10x-lib/CMSIS/GD/GD32F10x/Include/",
                 "lib/gd32f10x-lib/GD32F10x_standard_peripheral/Include/",
