@@ -50,7 +50,7 @@ struct ll_spi_trans
 {
     void *buf;
     size_t size;
-    int dir : 1; //传输方向
+    uint16_t dir : 1; //传输方向
 };
 
 struct ll_spi_msg
@@ -66,14 +66,14 @@ struct ll_spi_msg
 
 struct ll_spi_conf
 {
-    uint32_t max_speed_hz;     //最大传输速率
-    int frame_bits : 2;        //每帧传输的数据位
-    int cpha : 1;              //时钟相位
-    int cpol : 1;              //时钟极性
-    int endian : 1;            //数据传输大小端
-    int cs_mode : 2;           //片选模式
-    int proto : 2;             //传输协议
-    int send_addr_not_inc : 1; //发送数据地址不要自增，即重复发送同一个数据
+    uint32_t max_speed_hz;          //最大传输速率
+    uint16_t frame_bits : 2;        //每帧传输的数据位
+    uint16_t cpha : 1;              //时钟相位
+    uint16_t cpol : 1;              //时钟极性
+    uint16_t endian : 1;            //数据传输大小端
+    uint16_t cs_mode : 2;           //片选模式
+    uint16_t proto : 2;             //传输协议
+    uint16_t send_addr_not_inc : 1; //发送数据地址不要自增，即重复发送同一个数据
 };
 
 struct ll_spi_dev
@@ -87,10 +87,10 @@ struct ll_spi_dev
 
 struct ll_spi_ops
 {
-    ssize_t (*master_send)(struct ll_spi_dev *dev, const void *buf, size_t size);
-    ssize_t (*matser_recv)(struct ll_spi_dev *dev, void *buf, size_t size);
-    void (*hard_cs_ctrl)(struct ll_spi_dev *dev, bool state);
-    int (*config)(struct ll_spi_dev *dev);
+    ssize_t (*master_send)(struct ll_spi_bus *spi, const void *buf, size_t size);
+    ssize_t (*matser_recv)(struct ll_spi_bus *spi, void *buf, size_t size);
+    void (*hard_cs_ctrl)(struct ll_spi_bus *spi, bool state);
+    int (*config)(struct ll_spi_bus *spi, struct ll_spi_conf *conf);
 };
 
 struct ll_spi_bus

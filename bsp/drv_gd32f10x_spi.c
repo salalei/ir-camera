@@ -27,9 +27,9 @@ struct gd32f10x_spi_handle
     uint32_t max_speed_hz;
 };
 
-static ssize_t master_send(struct ll_spi_dev *dev, const void *buf, size_t size)
+static ssize_t master_send(struct ll_spi_bus *bus, const void *buf, size_t size)
 {
-    struct gd32f10x_spi_handle *handle = (struct gd32f10x_spi_handle *)dev->spi;
+    struct gd32f10x_spi_handle *handle = (struct gd32f10x_spi_handle *)bus;
 
     dma_memory_address_config(handle->send_dma, handle->send_dma_ch, (uint32_t)buf);
     dma_transfer_number_config(handle->send_dma,
@@ -39,9 +39,9 @@ static ssize_t master_send(struct ll_spi_dev *dev, const void *buf, size_t size)
     return size;
 }
 
-static void hard_cs_ctrl(struct ll_spi_dev *dev, bool state)
+static void hard_cs_ctrl(struct ll_spi_bus *bus, bool state)
 {
-    struct gd32f10x_spi_handle *handle = (struct gd32f10x_spi_handle *)dev->spi;
+    struct gd32f10x_spi_handle *handle = (struct gd32f10x_spi_handle *)bus;
 
     if (state)
         spi_enable(handle->spi);
@@ -49,17 +49,17 @@ static void hard_cs_ctrl(struct ll_spi_dev *dev, bool state)
         spi_disable(handle->spi);
 }
 
-static inline int get_prescale(struct ll_spi_dev *dev)
+static inline int get_prescale(struct ll_spi_bus *bus, struct ll_spi_conf *conf)
 {
     int prescale;
-    int max_speed_hz = ((struct gd32f10x_spi_handle *)dev->spi)->max_speed_hz;
-    uint32_t spi = ((struct gd32f10x_spi_handle *)dev->spi)->spi;
+    int max_speed_hz = ((struct gd32f10x_spi_handle *)bus)->max_speed_hz;
+    uint32_t spi = ((struct gd32f10x_spi_handle *)bus)->spi;
 
     if (spi == SPI0)
         prescale = 1;
     else
         prescale = 0;
-    while (dev->conf.max_speed_hz < max_speed_hz)
+    while (conf->max_speed_hz < max_speed_hz)
     {
         if (++prescale > 7)
             return -EIO;
@@ -68,31 +68,31 @@ static inline int get_prescale(struct ll_spi_dev *dev)
     return prescale;
 }
 
-static int config(struct ll_spi_dev *dev)
+static int config(struct ll_spi_bus *bus, struct ll_spi_conf *conf)
 {
     bool dirty = false;
-    struct gd32f10x_spi_handle *handle = (struct gd32f10x_spi_handle *)dev->spi;
-    if (handle->conf.max_speed_hz != dev->conf.max_speed_hz)
+    struct gd32f10x_spi_handle *handle = (struct gd32f10x_spi_handle *)bus;
+    if (handle->conf.max_speed_hz != conf->max_speed_hz)
     {
-        int prescale = get_prescale(dev);
+        int prescale = get_prescale(bus, conf);
         if (prescale < 0)
         {
-            LL_ERROR("not support spi speed hz %d", dev->conf.max_speed_hz);
+            LL_ERROR("not support spi speed hz %d", conf->max_speed_hz);
             return -EIO;
         }
         handle->param.prescale = CTL0_PSC(prescale);
-        handle->conf.max_speed_hz = dev->conf.max_speed_hz;
+        handle->conf.max_speed_hz = conf->max_speed_hz;
         dirty = true;
     }
-    if (handle->conf.frame_bits != dev->conf.frame_bits)
+    if (handle->conf.frame_bits != conf->frame_bits)
     {
-        if (dev->conf.frame_bits == __LL_SPI_FRAME_8BIT)
+        if (conf->frame_bits == __LL_SPI_FRAME_8BIT)
         {
             dma_memory_width_config(handle->send_dma, handle->send_dma_ch, DMA_MEMORY_WIDTH_8BIT);
             dma_periph_width_config(handle->send_dma, handle->send_dma_ch, DMA_PERIPHERAL_WIDTH_8BIT);
             handle->param.frame_size = SPI_FRAMESIZE_8BIT;
         }
-        else if (dev->conf.frame_bits == __LL_SPI_FRAME_16BIT)
+        else if (conf->frame_bits == __LL_SPI_FRAME_16BIT)
         {
             dma_memory_width_config(handle->send_dma, handle->send_dma_ch, DMA_MEMORY_WIDTH_16BIT);
             dma_periph_width_config(handle->send_dma, handle->send_dma_ch, DMA_PERIPHERAL_WIDTH_16BIT);
@@ -100,52 +100,52 @@ static int config(struct ll_spi_dev *dev)
         }
         else
         {
-            LL_ERROR("not support spi frame %d bits", dev->conf.frame_bits * 8);
+            LL_ERROR("not support spi frame %d bits", conf->frame_bits * 8);
             return -EIO;
         }
-        handle->conf.frame_bits = dev->conf.frame_bits;
+        handle->conf.frame_bits = conf->frame_bits;
         dirty = true;
     }
-    if (handle->conf.cpha != dev->conf.cpha || handle->conf.cpol != dev->conf.cpol)
+    if (handle->conf.cpha != conf->cpha || handle->conf.cpol != conf->cpol)
     {
-        if (!dev->conf.cpha && !dev->conf.cpol)
+        if (!conf->cpha && !conf->cpol)
             handle->param.clock_polarity_phase = SPI_CK_PL_LOW_PH_1EDGE;
-        else if (dev->conf.cpha && !dev->conf.cpol)
+        else if (conf->cpha && !conf->cpol)
             handle->param.clock_polarity_phase = SPI_CK_PL_LOW_PH_2EDGE;
-        else if (!dev->conf.cpha && dev->conf.cpol)
+        else if (!conf->cpha && conf->cpol)
             handle->param.clock_polarity_phase = SPI_CK_PL_HIGH_PH_1EDGE;
         else
             handle->param.clock_polarity_phase = SPI_CK_PL_HIGH_PH_2EDGE;
-        handle->conf.cpha = dev->conf.cpha;
-        handle->conf.cpol = dev->conf.cpol;
+        handle->conf.cpha = conf->cpha;
+        handle->conf.cpol = conf->cpol;
         dirty = true;
     }
-    if (handle->conf.endian != dev->conf.endian)
+    if (handle->conf.endian != conf->endian)
     {
-        if (dev->conf.endian)
+        if (conf->endian)
             handle->param.endian = SPI_ENDIAN_MSB;
         else
             handle->param.endian = SPI_ENDIAN_LSB;
-        handle->conf.endian = dev->conf.endian;
+        handle->conf.endian = conf->endian;
         dirty = true;
     }
-    if (handle->conf.cs_mode != dev->conf.cs_mode)
+    if (handle->conf.cs_mode != conf->cs_mode)
     {
-        if (dev->conf.cs_mode == __LL_SPI_HARD_CS)
+        if (conf->cs_mode == __LL_SPI_HARD_CS)
             handle->param.nss = SPI_NSS_HARD;
         else
             handle->param.nss = SPI_NSS_SOFT;
-        handle->conf.cs_mode = dev->conf.cs_mode;
+        handle->conf.cs_mode = conf->cs_mode;
         dirty = true;
     }
-    if (dev->conf.proto != __LL_SPI_PROTO_STD)
+    if (conf->proto != __LL_SPI_PROTO_STD)
     {
-        LL_ERROR("not support spi proto %d", dev->conf.proto);
+        LL_ERROR("not support spi proto %d", conf->proto);
         return -EIO;
     }
-    if (handle->conf.send_addr_not_inc != dev->conf.send_addr_not_inc)
+    if (handle->conf.send_addr_not_inc != conf->send_addr_not_inc)
     {
-        handle->conf.send_addr_not_inc = dev->conf.send_addr_not_inc;
+        handle->conf.send_addr_not_inc = conf->send_addr_not_inc;
         if (handle->conf.send_addr_not_inc)
             dma_memory_increase_disable(handle->send_dma, handle->send_dma_ch);
         else

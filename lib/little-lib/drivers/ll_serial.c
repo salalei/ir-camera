@@ -135,15 +135,9 @@ int __ll_serial_register(struct ll_serial *serial,
 {
     LL_ASSERT(serial && name && serial->ops && serial->ops->config && serial->ops->poll_get_char && serial->ops->poll_put_char);
     if (drv_mode & __LL_DRV_MODE_ASYNC_WRITE)
-    {
         LL_ASSERT(serial->ops->irq_send && serial->ops->stop_send);
-        drv_mode |= __LL_DRV_MODE_WRITE;
-    }
     if (drv_mode & __LL_DRV_MODE_ASYNC_READ)
-    {
         LL_ASSERT(serial->ops->recv_ctrl);
-        drv_mode |= __LL_DRV_MODE_READ;
-    }
 
     __ll_drv_init(&serial->parent, name, priv, drv_mode);
     serial->send_busy = 0;

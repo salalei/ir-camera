@@ -19,18 +19,19 @@
 
 static int take_bus(struct ll_spi_dev *dev)
 {
-    if (dev->spi->dev != dev)
+    struct ll_spi_bus *bus = dev->spi;
+    if (bus->dev != dev)
     {
         int res;
-        res = dev->spi->ops->config(dev);
+        res = bus->ops->config(bus, &dev->conf);
         if (res)
             return res;
-        dev->spi->dev = dev;
+        bus->dev = dev;
     }
     if (dev->conf.cs_mode == __LL_SPI_SOFT_CS)
         ll_pin_active(dev->cs_pin);
     else if (dev->conf.cs_mode == __LL_SPI_HARD_CS)
-        dev->spi->ops->hard_cs_ctrl(dev, true);
+        bus->ops->hard_cs_ctrl(bus, true);
 
     return 0;
 }
@@ -40,7 +41,7 @@ static void release_bus(struct ll_spi_dev *dev)
     if (dev->conf.cs_mode == __LL_SPI_SOFT_CS)
         ll_pin_deactive(dev->cs_pin);
     else if (dev->conf.cs_mode == __LL_SPI_HARD_CS)
-        dev->spi->ops->hard_cs_ctrl(dev, false);
+        dev->spi->ops->hard_cs_ctrl(dev->spi, false);
 }
 
 static int spi_trans(struct ll_spi_bus *bus, struct ll_spi_trans *trans)
@@ -50,12 +51,12 @@ static int spi_trans(struct ll_spi_bus *bus, struct ll_spi_trans *trans)
     if (trans->dir == __LL_SPI_DIR_SEND)
     {
         LL_ASSERT(bus->dev->parent.drv_mode & __LL_DRV_MODE_WRITE);
-        trans_size = bus->ops->master_send(bus->dev, trans->buf, trans->size);
+        trans_size = bus->ops->master_send(bus, trans->buf, trans->size);
     }
     else
     {
         LL_ASSERT(bus->dev->parent.drv_mode & __LL_DRV_MODE_WRITE);
-        trans_size = bus->ops->matser_recv(bus->dev, trans->buf, trans->size);
+        trans_size = bus->ops->matser_recv(bus, trans->buf, trans->size);
     }
     if (trans_size != trans->size)
     {
@@ -156,18 +157,12 @@ int __ll_spi_bus_register(struct ll_spi_bus *bus,
                           int drv_mode)
 {
     LL_ASSERT(bus && name && bus->ops && bus->ops->config);
-    if (drv_mode & __LL_DRV_MODE_ASYNC_WRITE)
-    {
-        LL_ASSERT(bus->ops->master_send);
-        drv_mode |= __LL_DRV_MODE_WRITE;
-    }
-    if (drv_mode & __LL_DRV_MODE_ASYNC_READ)
-    {
-        LL_ASSERT(bus->ops->matser_recv);
-        drv_mode |= __LL_DRV_MODE_READ;
-    }
-
     __ll_drv_init(&bus->parent, name, priv, drv_mode);
+    if (drv_mode & __LL_DRV_MODE_WRITE)
+        LL_ASSERT(bus->ops->master_send);
+    if (drv_mode & __LL_DRV_MODE_READ)
+        LL_ASSERT(bus->ops->matser_recv);
+
     bus->dev = NULL;
     ll_list_head_init(&bus->msg_head);
     ll_list_head_init(&bus->dev_head);
@@ -307,7 +302,7 @@ int ll_spi_config(struct ll_spi_dev *dev, struct ll_spi_conf *conf)
     if (!dev->spi->send_busy)
     {
         memcpy(&dev->conf, conf, sizeof(struct ll_spi_conf));
-        res = dev->spi->ops->config(dev);
+        res = dev->spi->ops->config(dev->spi, conf);
     }
     else
         res = -EAGAIN;
@@ -348,10 +343,8 @@ void ll_spi_msg_init(struct ll_spi_msg *msg,
 int ll_spi_bus_init(struct ll_spi_bus *bus)
 {
     LL_ASSERT(bus);
-    bus->parent.init_count++;
-    if (bus->parent.init_count > 1)
+    if (bus->parent.init_count)
         return 0;
-    bus->parent.init = 1;
     bus->dev = NULL;
     ll_list_head_init(&bus->msg_head);
     ll_list_head_init(&bus->dev_head);
@@ -366,6 +359,8 @@ int ll_spi_bus_init(struct ll_spi_bus *bus)
         if (!bus->lock)
             return -EAGAIN;
     }
+    bus->parent.init_count++;
+    bus->parent.init = 1;
 
     return 0;
 }
@@ -379,13 +374,16 @@ int ll_spi_bus_init(struct ll_spi_bus *bus)
 int ll_spi_bus_deinit(struct ll_spi_bus *bus)
 {
     LL_ASSERT(bus);
-    if (bus->parent.init_count == 0)
+    if (!bus->parent.init_count)
     {
         LL_DEBUG("spi has not been initialized");
         return -EINVAL;
     }
-    if (--bus->parent.init_count)
+    if (bus->parent.init_count > 1)
+    {
+        bus->parent.init_count--;
         return 0;
+    }
     if (bus->parent.drv_mode & (__LL_DRV_MODE_ASYNC_WRITE | __LL_DRV_MODE_ASYNC_READ))
     {
         if (bus->send_busy)
@@ -396,6 +394,8 @@ int ll_spi_bus_deinit(struct ll_spi_bus *bus)
         if (xSemaphoreGetMutexHolder(bus->lock))
             return -EAGAIN;
     }
+    bus->parent.init_count--;
+    bus->parent.init = 0;
     bus->dev = NULL;
     bus->trans_index = 0;
     bus->cs_numb = 0;
