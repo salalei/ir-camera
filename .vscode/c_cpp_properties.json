@@ -3,8 +3,8 @@
         {
             "name": "Win32",
             "includePath": [
-                "bsp/",
-                "user/",
+                "bsp/include",
+                "include/",
                 "lib/little-lib/include/",
                 "lib/little-lib/drivers/include/",
                 "lib/gd32f10x-lib/CMSIS/",

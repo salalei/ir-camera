@@ -39,7 +39,7 @@ struct ll_i2c_dev
 
 struct ll_i2c_ops
 {
-    ssize_t (*master_xfer)(struct ll_i2c_bus *i2c, struct ll_i2c_msg *msg, size_t numb);
+    ssize_t (*master_xfer)(struct ll_i2c_dev *dev, struct ll_i2c_msg *msg, size_t numb);
 };
 
 struct ll_i2c_bus
@@ -56,7 +56,7 @@ int __ll_i2c_bus_register(struct ll_i2c_bus *i2c,
                           void *priv,
                           int drv_mode);
 
-                          
+ssize_t ll_i2c_trans(struct ll_i2c_dev *dev, struct ll_i2c_msg *msg, size_t numb);
 int ll_i2c_bus_init(struct ll_i2c_bus *bus);
 int ll_i2c_bus_deinit(struct ll_i2c_bus *bus);
 struct ll_i2c_dev *ll_i2c_dev_find_by_name(struct ll_i2c_bus *bus, const char *name);
