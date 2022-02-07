@@ -11,10 +11,21 @@
 #ifndef __LL_0_96_LCD_H__
 #define __LL_0_96_LCD_H__
 
-int ll_0_96_lcd_init(const char *name,
-                     const char *lcd_res,
-                     const char *lcd_dc,
-                     const char *lcd_cs,
-                     const char *spi);
+#include "ll_disp.h"
+#include "ll_pin.h"
+#include "ll_spi.h"
+
+struct lcd_0_96_drv
+{
+    struct ll_disp_drv parent;
+    struct ll_spi_dev dev;
+    struct ll_pin *res_pin;
+    struct ll_pin *dc_pin;
+};
+
+int ll_0_96_lcd_init(struct lcd_0_96_drv *lcd_drv,
+                     const char *name,
+                     struct ll_pin *lcd_cs_pin,
+                     const char *lcd_spi);
 
 #endif

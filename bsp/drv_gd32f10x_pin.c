@@ -12,8 +12,8 @@
 #ifdef bool
 #undef bool
 #endif
-#include "ll_pin.h"
 #include "ll_init.h"
+#include "ll_pin.h"
 
 #define PORT (((struct gd32f10x_pin_handle *)(handle))->port)
 #define PIN  (((struct gd32f10x_pin_handle *)(handle))->pin)

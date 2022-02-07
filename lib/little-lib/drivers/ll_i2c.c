@@ -9,6 +9,7 @@
  *
  */
 #include "ll_i2c.h"
+#include "ll_log.h"
 
 #include "FreeRTOS.h"
 #include "semphr.h"
@@ -31,25 +32,27 @@ int __ll_i2c_bus_register(struct ll_i2c_bus *i2c,
     __ll_drv_init(&i2c->parent, name, priv, drv_mode);
     ll_list_head_init(&i2c->dev_head);
     i2c->lock = NULL;
+    __ll_drv_register(&i2c->parent);
+    return 0;
 }
 
 /**
  * @brief 进行一次i2c传输
  *
  * @param dev 指向i2c设备的指针
- * @param msg 指向用户的消息队列
+ * @param msgs 指向用户的消息队列
  * @param numb 用户要传输的消息数量
  * @return ssize_t 实际传输的消息数量
  */
-ssize_t ll_i2c_trans(struct ll_i2c_dev *dev, struct ll_i2c_msg *msg, size_t numb)
+ssize_t ll_i2c_trans(struct ll_i2c_dev *dev, struct ll_i2c_msg *msgs, size_t numb)
 {
     ssize_t res;
 
-    LL_ASSERT(dev && msg);
+    LL_ASSERT(dev && msgs);
     if (!numb)
         return 0;
     xSemaphoreTake(dev->i2c->lock, portMAX_DELAY);
-    res = dev->i2c->ops->master_xfer(dev, msg, numb);
+    res = dev->i2c->ops->master_xfer(dev, msgs, numb);
     xSemaphoreGive(dev->i2c->lock);
     return res;
 }

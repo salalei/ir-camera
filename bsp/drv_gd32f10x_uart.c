@@ -21,7 +21,7 @@ struct gd32f10x_uart_handle
     struct ll_serial parent;
     uint32_t uart;
     uint32_t send_dma;
-    dma_channel_enum dma_channel;
+    dma_channel_enum send_dma_ch;
 };
 
 static int poll_getc(struct ll_serial *handle)
@@ -49,9 +49,9 @@ static ssize_t irq_send(struct ll_serial *handle, const void *buf, size_t size)
 {
     struct gd32f10x_uart_handle *p = (struct gd32f10x_uart_handle *)handle;
 
-    dma_memory_address_config(p->send_dma, p->dma_channel, (uint32_t)buf);
-    dma_transfer_number_config(p->send_dma, p->dma_channel, size);
-    dma_channel_enable(p->send_dma, p->dma_channel);
+    dma_memory_address_config(p->send_dma, p->send_dma_ch, (uint32_t)buf);
+    dma_transfer_number_config(p->send_dma, p->send_dma_ch, size);
+    dma_channel_enable(p->send_dma, p->send_dma_ch);
     return (ssize_t)size;
 }
 
@@ -109,8 +109,8 @@ static void stop_send(struct ll_serial *handle)
 {
     struct gd32f10x_uart_handle *p = (struct gd32f10x_uart_handle *)handle;
 
-    dma_channel_disable(p->send_dma, p->dma_channel);
-    dma_interrupt_flag_clear(p->send_dma, p->dma_channel, DMA_INT_FLAG_G);
+    dma_channel_disable(p->send_dma, p->send_dma_ch);
+    dma_interrupt_flag_clear(p->send_dma, p->send_dma_ch, DMA_INT_FLAG_G);
 }
 
 static void recv_ctrl(struct ll_serial *handle, bool enabled)
@@ -150,10 +150,10 @@ static void uart_handler(struct gd32f10x_uart_handle *handle)
 
 static void send_dma_handler(struct gd32f10x_uart_handle *handle)
 {
-    if (dma_interrupt_flag_get(handle->send_dma, handle->dma_channel, DMA_INT_FLAG_FTF))
+    if (dma_interrupt_flag_get(handle->send_dma, handle->send_dma_ch, DMA_INT_FLAG_FTF))
     {
-        dma_interrupt_flag_clear(handle->send_dma, handle->dma_channel, DMA_INT_FLAG_G);
-        dma_channel_disable(handle->send_dma, handle->dma_channel);
+        dma_interrupt_flag_clear(handle->send_dma, handle->send_dma_ch, DMA_INT_FLAG_FTF);
+        dma_channel_disable(handle->send_dma, handle->send_dma_ch);
         __ll_serial_send_irq_handler(&handle->parent);
     }
 }
@@ -218,7 +218,7 @@ static int bsp_uart_init(void)
     uart0_init();
     uart0.uart = USART0;
     uart0.send_dma = DMA0;
-    uart0.dma_channel = DMA_CH3;
+    uart0.send_dma_ch = DMA_CH3;
     uart0.parent.ops = &ops;
     return __ll_serial_register(&uart0.parent, "uart0", NULL, __LL_DRV_MODE_ASYNC_WRITE | __LL_DRV_MODE_ASYNC_READ);
 }

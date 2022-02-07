@@ -54,12 +54,14 @@
         "ll_serial.h": "c",
         "ll_drv.h": "c",
         "ll_assert.h": "c",
-        "ll_log.h": "c"
+        "ll_log.h": "c",
+        "ll_init.h": "c",
+        "ll_i2c.h": "c"
     },
     "cSpell.words": [
         "CPHA",
         "initcall",
         "RBNE"
     ],
-    "cortex-debug.variableUseNaturalFormat": true
+    "cortex-debug.variableUseNaturalFormat": false
 }

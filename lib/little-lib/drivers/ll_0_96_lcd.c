@@ -9,9 +9,6 @@
  *
  */
 #include "ll_0_96_lcd.h"
-#include "ll_disp.h"
-#include "ll_pin.h"
-#include "ll_spi.h"
 
 #include "FreeRTOS.h"
 #include "task.h"
@@ -19,14 +16,6 @@
 #define LCD_Y_OFFSET 32
 #define LCD_WIDTH    128
 #define LCD_HEIGHT   64
-
-struct lcd_0_96_drv
-{
-    struct ll_disp_drv parent;
-    struct ll_spi_dev dev;
-    struct ll_pin *res_pin;
-    struct ll_pin *dc_pin;
-};
 
 static int lcd_write_cmd(struct lcd_0_96_drv *lcd, uint8_t cmd, const uint8_t *buf, size_t size)
 {
@@ -210,39 +199,22 @@ const static struct ll_disp_ops ops = {
     .backlight = backlight,
 };
 
-int ll_0_96_lcd_init(const char *name,
-                     const char *lcd_res,
-                     const char *lcd_dc,
-                     const char *lcd_cs,
-                     const char *spi)
+/**
+ * @brief 初始化0.96寸的OLED屏驱动
+ *
+ * @param lcd_drv 指向lcd_0_96_drv结构的指针
+ * @param name 驱动名字
+ * @param lcd_cs_pin 指向lcd的片选脚
+ * @param lcd_spi 挂载的spi总线名字
+ * @return int 成功返回0，失败返回一个负数
+ */
+int ll_0_96_lcd_init(struct lcd_0_96_drv *lcd_drv,
+                     const char *name,
+                     struct ll_pin *lcd_cs_pin,
+                     const char *lcd_spi)
 {
-    int res;
-
-    struct lcd_0_96_drv *lcd_drv = pvPortMalloc(sizeof(struct lcd_0_96_drv));
-
-    if (!lcd_drv)
-    {
-        res = -ENOSYS;
-        goto error;
-    }
-    lcd_drv->res_pin = (struct ll_pin *)ll_drv_find_by_name(lcd_res);
-    if (!lcd_drv->res_pin)
-    {
-        res = -ENOSYS;
-        goto error;
-    }
-    lcd_drv->dc_pin = (struct ll_pin *)ll_drv_find_by_name(lcd_dc);
-    if (!lcd_drv->dc_pin)
-    {
-        res = -ENOSYS;
-        goto error;
-    }
-    lcd_drv->dev.cs_pin = (struct ll_pin *)ll_drv_find_by_name(lcd_cs);
-    if (!lcd_drv->dev.cs_pin)
-    {
-        res = -ENOSYS;
-        goto error;
-    }
+    LL_ASSERT(lcd_drv && lcd_drv->res_pin && lcd_drv->dc_pin && name && lcd_cs_pin && lcd_spi);
+    lcd_drv->dev.cs_pin = lcd_cs_pin;
     lcd_drv->dev.conf.cpha = 1;
     lcd_drv->dev.conf.cpol = 1;
     lcd_drv->dev.conf.cs_mode = __LL_SPI_SOFT_CS;
@@ -251,9 +223,8 @@ int ll_0_96_lcd_init(const char *name,
     lcd_drv->dev.conf.max_speed_hz = 10000000;
     lcd_drv->dev.conf.proto = __LL_SPI_PROTO_STD;
     lcd_drv->dev.conf.send_addr_not_inc = 0;
-    res = ll_spi_dev_register(&lcd_drv->dev, name, spi, NULL, __LL_DRV_MODE_WRITE);
-    if (res)
-        goto error;
+    if (ll_spi_dev_register(&lcd_drv->dev, name, lcd_spi, NULL, __LL_DRV_MODE_WRITE))
+        return -ENOSYS;
     lcd_drv->parent.framebuf = NULL;
     lcd_drv->parent.ops = &ops;
     lcd_drv->parent.dir = LL_DISP_DIR_HORIZONTAL;
@@ -261,8 +232,4 @@ int ll_0_96_lcd_init(const char *name,
     lcd_drv->parent.width = LCD_WIDTH;
     lcd_drv->parent.height = LCD_HEIGHT;
     return __ll_disp_register(&lcd_drv->parent, name, NULL, __LL_DRV_MODE_ASYNC_WRITE);
-
-error:
-    vPortFree(lcd_drv);
-    return -ENOSYS;
 }
