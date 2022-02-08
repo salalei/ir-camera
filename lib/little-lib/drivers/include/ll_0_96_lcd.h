@@ -26,6 +26,6 @@ struct lcd_0_96_drv
 int ll_0_96_lcd_init(struct lcd_0_96_drv *lcd_drv,
                      const char *name,
                      struct ll_pin *lcd_cs_pin,
-                     const char *lcd_spi);
+                     struct ll_spi_bus *lcd_spi);
 
 #endif

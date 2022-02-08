@@ -205,13 +205,13 @@ const static struct ll_disp_ops ops = {
  * @param lcd_drv 指向lcd_0_96_drv结构的指针
  * @param name 驱动名字
  * @param lcd_cs_pin 指向lcd的片选脚
- * @param lcd_spi 挂载的spi总线名字
+ * @param lcd_spi 指向设备所挂载的总线
  * @return int 成功返回0，失败返回一个负数
  */
 int ll_0_96_lcd_init(struct lcd_0_96_drv *lcd_drv,
                      const char *name,
                      struct ll_pin *lcd_cs_pin,
-                     const char *lcd_spi)
+                     struct ll_spi_bus *lcd_spi)
 {
     LL_ASSERT(lcd_drv && lcd_drv->res_pin && lcd_drv->dc_pin && name && lcd_cs_pin && lcd_spi);
     lcd_drv->dev.cs_pin = lcd_cs_pin;
@@ -223,7 +223,8 @@ int ll_0_96_lcd_init(struct lcd_0_96_drv *lcd_drv,
     lcd_drv->dev.conf.max_speed_hz = 10000000;
     lcd_drv->dev.conf.proto = __LL_SPI_PROTO_STD;
     lcd_drv->dev.conf.send_addr_not_inc = 0;
-    if (ll_spi_dev_register(&lcd_drv->dev, name, lcd_spi, NULL, __LL_DRV_MODE_WRITE))
+    lcd_drv->dev.spi = lcd_spi;
+    if (ll_spi_dev_register(&lcd_drv->dev, name, NULL, __LL_DRV_MODE_WRITE))
         return -ENOSYS;
     lcd_drv->parent.framebuf = NULL;
     lcd_drv->parent.ops = &ops;

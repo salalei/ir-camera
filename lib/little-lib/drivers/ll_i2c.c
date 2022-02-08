@@ -122,27 +122,19 @@ struct ll_i2c_dev *ll_i2c_dev_find_by_name(struct ll_i2c_bus *bus, const char *n
  *
  * @param dev 指向i2c设备的指针
  * @param name 设备的名字
- * @param i2c_bus 设备所挂载的总线的名字
  * @param priv 用户的私有参数
  * @param drv_mode i2c设备的驱动模式
  * @return int 成功返回0，失败返回一个负数
  */
 int ll_i2c_dev_register(struct ll_i2c_dev *dev,
                         const char *name,
-                        const char *i2c_bus,
                         void *priv,
                         int drv_mode)
 {
     int res;
 
-    LL_ASSERT(dev && name && i2c_bus);
+    LL_ASSERT(dev && name);
     __ll_drv_init(&dev->parent, name, priv, drv_mode);
-    dev->i2c = (struct ll_i2c_bus *)ll_drv_find_by_name(i2c_bus);
-    if (!dev->i2c)
-    {
-        LL_ERROR("cannot find %s", i2c_bus);
-        return -EIO;
-    }
     res = ll_i2c_bus_init(dev->i2c);
     if (res)
         return res;

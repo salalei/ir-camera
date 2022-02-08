@@ -137,7 +137,6 @@ int ll_spi_bus_deinit(struct ll_spi_bus *bus);
 struct ll_spi_dev *ll_spi_dev_find_by_name(struct ll_spi_bus *bus, const char *name);
 int ll_spi_dev_register(struct ll_spi_dev *dev,
                         const char *name,
-                        const char *spi_bus,
                         void *priv,
                         int drv_mode);
 int ll_spi_dev_unregister(struct ll_spi_dev *dev);

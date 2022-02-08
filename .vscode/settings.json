@@ -60,8 +60,9 @@
     },
     "cSpell.words": [
         "CPHA",
+        "EEPROM",
         "initcall",
         "RBNE"
     ],
-    "cortex-debug.variableUseNaturalFormat": false
+    "cortex-debug.variableUseNaturalFormat": true
 }

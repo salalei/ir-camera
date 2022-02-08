@@ -14,6 +14,7 @@
 #include "ll_disp.h"
 #include "ll_i2c.h"
 #include "ll_log.h"
+#include "ll_mlx90640.h"
 #include "ll_pin.h"
 
 #include "FreeRTOS.h"
@@ -24,6 +25,7 @@ static TimerHandle_t timer0;
 static struct ll_pin *led;
 static struct ll_disp_drv *lcd;
 static struct ll_i2c_bus *i2c;
+static struct ll_mlx90640 mlx90640;
 
 void timer_cb(TimerHandle_t timer)
 {
@@ -53,29 +55,40 @@ int main(void)
     i2c = (struct ll_i2c_bus *)ll_drv_find_by_name("i2c0");
     if (i2c)
     {
-        uint16_t regdata;
-        struct ll_i2c_dev ir_camera = {
-            .addr = 0x33,
-            .i2c = i2c,
-        };
-        struct ll_i2c_msg msgs[2] = {
-            {
-                .buf = &(uint16_t){0x0008},
-                .size = 2,
-                .dir = __LL_I2C_DIR_SEND,
-            },
-            {
-                .buf = &regdata,
-                .size = 2,
-                .dir = __LL_I2C_DIR_RECV,
-            },
-        };
-        LL_DEBUG("i2c init OK");
-        ll_i2c_dev_register(&ir_camera, "ir", "i2c0", NULL, __LL_DRV_MODE_READ | __LL_DRV_MODE_WRITE);
-        if (ll_i2c_trans(&ir_camera, msgs, 2) != 2)
-            LL_ERROR("i2c trans failed");
+        if (ll_mlx90640_init(&mlx90640, i2c, LL_MLX90640_RATE_2))
+            LL_ERROR("mlx90640 init failed");
         else
-            LL_DEBUG("status regdata %#x", regdata);
+        {
+            struct ll_mlx90640_raw_data *data = pvPortMalloc(sizeof(struct ll_mlx90640_raw_data));
+            if (data)
+            {
+                while (1)
+                {
+                    while (ll_mlx90640_read_raw_data(&mlx90640, data))
+                    {
+                        vTaskDelay(10);
+                    }
+                    LL_DEBUG("mlx90640 get data");
+                    ll_printf("\r\n");
+                    for (int y = 0; y < 24; y++)
+                    {
+                        for (int x = 0; x < 32; x++)
+                        {
+                            uint16_t temp =abs((int16_t)(data->data[x + y * 32]));
+                            if(temp < 60)
+                                ll_printf("* ");
+                            else if(temp < 80)
+                                ll_printf(". ");
+                            else
+                                ll_printf("  ");
+                            // ll_printf("%4d ", (int16_t)data->data[x + y * 32]);
+                        }
+                        ll_printf("\r\n");
+                    }
+                    ll_printf("\r\n\r\n\r\n");
+                }
+            }
+        }
     }
     while (1)
     {

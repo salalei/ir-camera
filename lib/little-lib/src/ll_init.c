@@ -64,12 +64,8 @@ static inline void app_initcall(void)
 
 static void first_thread(void *param)
 {
-    device_initcall();
-    late_initcall();
-    app_initcall();
     extern int main(void);
     main();
-    vTaskDelete(NULL);
 }
 
 void __ll_entry(void)
@@ -78,6 +74,9 @@ void __ll_entry(void)
     early_initcall();
     taskENABLE_INTERRUPTS();
     board_initcall();
+    device_initcall();
+    late_initcall();
+    app_initcall();
     xTaskCreate(first_thread, "main", 512, NULL, 1, NULL);
     vTaskStartScheduler();
 }

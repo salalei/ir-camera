@@ -327,8 +327,6 @@ static void __dma_handler(struct gd32f10x_i2c_handle *handle, uint32_t dma, uint
         vTaskNotifyGiveIndexedFromISR(handle->thread, 1, &woken);
         portYIELD_FROM_ISR(woken);
     }
-    else
-        dma_interrupt_flag_clear(dma, dma_ch, DMA_INT_FLAG_G);
 }
 
 static inline void send_dma_handler(struct gd32f10x_i2c_handle *handle)

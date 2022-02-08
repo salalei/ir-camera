@@ -36,7 +36,7 @@ static inline int output(const char *buf, size_t size)
 #ifdef USING_ASYNC_LOG
         res = ll_fifo_push(&log_fifo, (const uint8_t *)buf, len);
 #else
-        res = ll_serial_write(serial, buf, size);
+        res = ll_serial_write(serial, buf, len);
         if (res < 0)
         {
             taskEXIT_CRITICAL_FROM_ISR(temp);
@@ -101,7 +101,7 @@ int ll_log_init(void)
     if (!serial)
         return -ENODEV;
     res = ll_serial_init(serial,
-                         LL_DRV_MODE_WRITE | LL_DRV_MODE_NONBLOCK_READ,
+                         LL_DRV_MODE_NONBLOCK_WRITE | LL_DRV_MODE_NONBLOCK_READ,
                          write_buf, LOG_WRITE_FIFO_SIZE,
                          read_buf, LOG_READ_FIFO_SIZE);
     if (res)

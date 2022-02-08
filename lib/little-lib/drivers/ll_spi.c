@@ -439,27 +439,19 @@ static inline bool spi_cs_is_used(struct ll_spi_dev *dev)
  *
  * @param dev 指向spi设备的指针
  * @param name 设备的名字
- * @param spi_bus 设备所挂载的总线的名字
  * @param priv 用户的私有参数
  * @param drv_mode spi设备的驱动模式
  * @return int 成功返回0，失败返回一个负数
  */
 int ll_spi_dev_register(struct ll_spi_dev *dev,
                         const char *name,
-                        const char *spi_bus,
                         void *priv,
                         int drv_mode)
 {
     int res;
 
-    LL_ASSERT(dev && name && spi_bus);
+    LL_ASSERT(dev && dev->spi && name);
     __ll_drv_init(&dev->parent, name, priv, drv_mode);
-    dev->spi = (struct ll_spi_bus *)ll_drv_find_by_name(spi_bus);
-    if (!dev->spi)
-    {
-        LL_ERROR("cannot find %s", spi_bus);
-        return -EIO;
-    }
     //检查片选设置是否正确
     if (dev->conf.cs_mode == __LL_SPI_HARD_CS)
     {

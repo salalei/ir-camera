@@ -63,7 +63,6 @@ int ll_i2c_bus_deinit(struct ll_i2c_bus *bus);
 struct ll_i2c_dev *ll_i2c_dev_find_by_name(struct ll_i2c_bus *bus, const char *name);
 int ll_i2c_dev_register(struct ll_i2c_dev *dev,
                         const char *name,
-                        const char *i2c_bus,
                         void *priv,
                         int drv_mode);
 int ll_i2c_dev_unregister(struct ll_i2c_dev *dev);

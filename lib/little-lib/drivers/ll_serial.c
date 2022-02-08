@@ -216,12 +216,11 @@ static inline ssize_t fifo_send_block(struct ll_serial *serial, const void *buf,
     size_t _size = size;
     size_t len;
 
+    serial->send_thread = xTaskGetCurrentTaskHandle();
     while (size)
     {
         len = ll_fifo_push(&serial->send_fifo, buf, size);
         temp = taskENTER_CRITICAL_FROM_ISR();
-        if (len != size && !serial->send_fifo_empty)
-            serial->send_thread = xTaskGetCurrentTaskHandle();
         if (serial->send_fifo_empty && len)
         {
             serial->send_fifo_empty = 0;
@@ -230,13 +229,11 @@ static inline ssize_t fifo_send_block(struct ll_serial *serial, const void *buf,
         }
         else
             taskEXIT_CRITICAL_FROM_ISR(temp);
-        if (serial->send_thread)
-        {
-            ulTaskNotifyTakeIndexed(1, pdTRUE, portMAX_DELAY);
-            serial->send_thread = NULL;
-        }
+
+        ulTaskNotifyTakeIndexed(1, pdTRUE, portMAX_DELAY);
         size -= len;
     }
+    serial->send_thread = NULL;
 
     return (ssize_t)_size;
 }

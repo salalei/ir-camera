@@ -24,9 +24,10 @@ static int lcd_init(void)
 {
     static struct lcd_0_96_drv lcd;
     struct ll_pin *lcd_cs = (struct ll_pin *)ll_drv_find_by_name("lcd cs");
+    struct ll_spi_bus *spi = (struct ll_spi_bus *)ll_drv_find_by_name("spi0");
 
     lcd.dc_pin = (struct ll_pin *)ll_drv_find_by_name("lcd dc");
     lcd.res_pin = (struct ll_pin *)ll_drv_find_by_name("lcd res");
-    return ll_0_96_lcd_init(&lcd, "lcd", lcd_cs, "spi0");
+    return ll_0_96_lcd_init(&lcd, "lcd", lcd_cs, spi);
 }
 LL_LATE_INITCALL(lcd_init);
