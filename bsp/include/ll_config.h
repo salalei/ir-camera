@@ -11,7 +11,7 @@
 #ifndef __CONFIG_H__
 #define __CONFIG_H__
 
-#define LL_USING_LOG
+// #define LL_USING_LOG
 #define LL_USING_LOG_TIMESTAMP
 #define USING_LOG_LABEL
 // #define USING_ASYNC_LOG
@@ -27,6 +27,6 @@
 #define LOG_SERIAL_PARITY    LL_SERIAL_PARITY_NONE
 #define LOG_SERIAL_FLOW_CTRL LL_SERIAL_FLOW_CTRL_NONE
 
-#define LL_USING_ASSERT
+// #define LL_USING_ASSERT
 
 #endif

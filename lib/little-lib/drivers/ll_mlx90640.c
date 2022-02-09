@@ -146,111 +146,87 @@ int ll_mlx90640_config(struct ll_mlx90640 *handle, enum ll_mlx90640_rate rate)
  * @param buf 用户提供的缓存区，必须>=768
  * @return int
  */
-int ll_mlx90640_read_raw_data(struct ll_mlx90640 *handle, struct ll_mlx90640_raw_data *data)
+int ll_mlx90640_read_raw_data(struct ll_mlx90640 *handle, struct ll_mlx90640_ram_buf *buf)
 {
     int res;
     uint16_t regdata;
 
-    LL_ASSERT(handle && data);
+    LL_ASSERT(handle && buf);
     READ_16BITS(handle, STATUS_REG, &regdata, 1);
     if (!(regdata & DATA_READY_IN_RAM_BIT))
         return -EAGAIN;
 
     WRITE_16BIT(handle, STATUS_REG, 0);
-    READ_16BITS(handle, RAM_ADDR, (uint16_t *)data, sizeof(struct ll_mlx90640_raw_data));
+    READ_16BITS(handle, RAM_ADDR, (uint16_t *)buf, sizeof(struct ll_mlx90640_ram_buf));
 
     return 0;
 }
 
-static inline int restoring_vdd_param(struct ll_mlx90640 *handle, struct ll_mlx90640_fixed_params *params)
+static inline void restoring_vdd_param(const struct ll_mlx90640_ee_buf *buf,
+                                       struct ll_mlx90640_fixed_params *params)
 {
-    int res;
-    uint16_t regdata;
+    params->kvdd = (int8_t)(buf->data[0x33] >> 8);
+    params->kvdd *= (1 << 5);
 
-    READ_16BITS(handle, 0x2433, &regdata, 1);
-    params->k_vdd = (int8_t)(regdata >> 8);
-    params->k_vdd <<= 5;
-
-    params->vdd25 = regdata & 0xff;
-    params->vdd25 = ((params->vdd25 - 256) << 5) - (1 << 13);
-
-    return 0;
+    params->vdd25 = (int16_t)(buf->data[0x33] & 0x00ff);
+    params->vdd25 = (params->vdd25 - 256) * (1 << 5) - (1 << 13);
 }
 
-static inline int restoring_ta_param(struct ll_mlx90640 *handle, struct ll_mlx90640_fixed_params *params)
+static inline void restoring_ta_param(const struct ll_mlx90640_ee_buf *buf,
+                                      struct ll_mlx90640_fixed_params *params)
 {
-    int res;
-    uint16_t regdata;
     int16_t temp;
-    int16_t alpha_ptat_ee;
 
-    READ_16BITS(handle, 0x2432, &regdata, 1);
-    temp = (int16_t)(regdata >> 10);
+    temp = (int16_t)(buf->data[0x32] >> 10);
     if (temp > 31)
         temp -= 64;
     params->k_vptat = (float)temp / (1 << 12);
 
-    temp = (int16_t)(regdata & 0x03ff);
+    temp = (int16_t)(buf->data[0x32] & 0x03ff);
     if (temp > 511)
         temp -= 1024;
     params->k_tptat = (float)temp / (1 << 3);
 
-    READ_16BITS(handle, 0x2431, &regdata, 1);
-    params->v_ptat25 = (int16_t)regdata;
+    params->v_ptat25 = (int16_t)buf->data[0x31];
 
-    READ_16BITS(handle, 0x2410, &regdata, 1);
-    temp = (int16_t)(regdata >> 12);
+    temp = (int16_t)(buf->data[0x10] >> 12);
     params->alpha_ptat = (float)temp / (1 << 2) + 8;
-
-    return 0;
 }
 
-static inline int restoring_offset(struct ll_mlx90640 *handle,
-                                   struct ll_mlx90640_raw_data *data,
-                                   struct ll_mlx90640_fixed_params *params)
+static inline void restoring_offset(const struct ll_mlx90640_ee_buf *buf,
+                                    struct ll_mlx90640_fixed_params *params)
 {
-    int res;
     int i, j;
-    uint16_t regdata;
-    int16_t offset_avg;
-    uint8_t occ_scale_row;
-    uint8_t occ_scale_col;
-    uint8_t occ_scale_remnant;
+    int16_t offset_avg = (int16_t)buf->data[0x11];
+    uint8_t occ_scale_row = (uint8_t)((buf->data[0x10] & 0x0f00) >> 8);
+    uint8_t occ_scale_col = (uint8_t)((buf->data[0x10] & 0x00f0) >> 4);
+    uint8_t occ_scale_remnant = (uint8_t)(buf->data[0x10] & 0x000f);
     int8_t occ_row[24];
     int8_t occ_col[32];
-    uint16_t *p_offset;
-    int16_t *p_pix_os_ref;
+    const uint16_t *p_offset = &buf->data[0x40];
+    int16_t *p_pix_os_ref = params->pix_os_ref;
 
-    READ_16BITS(handle, 0x2411, (uint16_t *)&offset_avg, 1);
-    READ_16BITS(handle, 0x2410, &regdata, 1);
-    occ_scale_row = (uint8_t)((regdata & 0x0f00) >> 8);
-    occ_scale_col = (uint8_t)((regdata & 0x00f0) >> 4);
-    occ_scale_remnant = (uint8_t)(regdata & 0x000f);
-    READ_16BITS(handle, 0x2412, data->params, 6);
     for (i = 0; i < 6; i++)
     {
         for (j = 0; j < 4; j++)
         {
-            int8_t temp = (int8_t)((data->params[i] >> (j << 2)) & 0x000f);
+            int8_t temp = (int8_t)((buf->data[0x12 + i] >> (j << 2)) & 0x000f);
             if (temp > 7)
                 temp -= 16;
             occ_row[j + i * 4] = temp;
         }
     }
-    READ_16BITS(handle, 0x2418, data->params, 8);
     for (i = 0; i < 8; i++)
     {
         for (j = 0; j < 4; j++)
         {
-            int8_t temp = (uint8_t)((data->params[i] >> (j << 2)) & 0x000f);
+            int8_t temp = (int8_t)((buf->data[0x18 + i] >> (j << 2)) & 0x000f);
             if (temp > 7)
                 temp -= 16;
             occ_col[j + i * 4] = temp;
         }
     }
-    READ_16BITS(handle, 0x2440, data->data, 768);
-    p_offset = data->data;
-    p_pix_os_ref = params->pix_os_ref;
+
     for (i = 0; i < 24; i++)
     {
         for (j = 0; j < 32; j++)
@@ -259,131 +235,248 @@ static inline int restoring_offset(struct ll_mlx90640 *handle,
             if (offset > 31)
                 offset -= 64;
             *p_pix_os_ref++ = offset_avg +
-                              (occ_row[i] << occ_scale_row) +
-                              (occ_col[j] << occ_scale_col) +
-                              (offset << occ_scale_remnant);
+                              occ_row[i] * (1 << occ_scale_row) +
+                              occ_col[j] * (1 << occ_scale_col) +
+                              offset * (1 << occ_scale_remnant);
         }
     }
-    return 0;
 }
 
-static inline int restoring_sensitivity_alpha(struct ll_mlx90640 *handle,
-                                              struct ll_mlx90640_raw_data *data,
-                                              struct ll_mlx90640_fixed_params *params)
+static inline void restoring_sensitivity_alpha(const struct ll_mlx90640_ee_buf *buf,
+                                               struct ll_mlx90640_fixed_params *params)
 {
-    int res;
     int i, j;
-    uint16_t regdata;
-    int16_t a_reference;
-    uint8_t a_scale;
-    uint8_t acc_scale_row;
-    uint8_t acc_scale_col;
-    uint8_t acc_scale_remnant;
+    int16_t a_reference = (int16_t)buf->data[0x21];
+    uint8_t acc_scale_row = (buf->data[0x20] & 0x0f00) >> 8;
+    uint8_t acc_scale_col = (buf->data[0x20] & 0x00f0) >> 4;
+    uint8_t acc_scale_remnant = buf->data[0x20] & 0x000f;
     int8_t acc_row[24];
     int8_t acc_col[32];
-    uint16_t *p_a_pixel;
-    int16_t *p_alpha;
+    const uint16_t *p_a_pixel = &buf->data[0x40];
+    int16_t *p_alpha = params->alpha;
 
-    READ_16BITS(handle, 0x2421, (uint16_t *)&a_reference, 1);
-    READ_16BITS(handle, 0x2420, &regdata, 1);
-    a_scale = (regdata >> 12) + 30;
-    acc_scale_row = (regdata & 0x0f00) >> 8;
-    acc_scale_col = (regdata & 0x00f0) >> 4;
-    acc_scale_remnant = regdata & 0x000f;
+    params->alpha_scale = (buf->data[0x20] >> 12) + 30;
 
-    READ_16BITS(handle, 0x2422, data->params, 6);
     for (i = 0; i < 6; i++)
     {
         for (j = 0; j < 4; j++)
         {
-            int8_t temp = (int8_t)((data->params[i] >> (j << 2)) & 0x000f);
+            int8_t temp = (int8_t)((buf->data[0x22 + i] >> (j << 2)) & 0x000f);
             if (temp > 7)
                 temp -= 16;
             acc_row[j + i * 4] = temp;
         }
     }
-    READ_16BITS(handle, 0x2428, data->params, 8);
     for (i = 0; i < 8; i++)
     {
         for (j = 0; j < 4; j++)
         {
-            int8_t temp = (int8_t)((data->params[i] >> (j << 2)) & 0x000f);
+            int8_t temp = (int8_t)((buf->data[0x28 + i] >> (j << 2)) & 0x000f);
             if (temp > 7)
                 temp -= 16;
             acc_col[j + i * 4] = temp;
         }
     }
-    // READ_16BITS(handle, 0x2440, data->data, 768);//获取offset时读过一次 不需要再读
-    p_a_pixel = data->data;
-    p_alpha = params->alpha;
+
     for (i = 0; i < 24; i++)
     {
         for (j = 0; j < 32; j++)
         {
             int8_t a_pixel = (int8_t)((*p_a_pixel++ & 0x03f0) >> 4);
             if (a_pixel > 31)
-                a_pixel = a_pixel - 64;
-            *p_alpha = a_reference +
-                       (acc_row[i] << acc_scale_row) +
-                       (acc_col[j] << acc_scale_col) +
-                       (a_pixel << acc_scale_remnant);
-            *p_alpha++ /= (1 << a_scale);
+                a_pixel -= 64;
+            *p_alpha++ = a_reference +
+                         acc_row[i] * (1 << acc_scale_row) +
+                         acc_col[j] * (1 << acc_scale_col) +
+                         a_pixel * (1 << acc_scale_remnant);
         }
     }
-    return 0;
 }
 
-static inline int restoring_kv(struct ll_mlx90640 *handle, struct ll_mlx90640_fixed_params *params)
+static inline float read_alpha(struct ll_mlx90640_fixed_params *params, int i)
 {
-    int res;
-    int i, j;
-    uint16_t regdata;
-    uint8_t kv_scale;
+    return (float)params->alpha[i] / (1 << params->alpha_scale);
+}
+
+static inline void restoring_kv(const struct ll_mlx90640_ee_buf *buf,
+                                struct ll_mlx90640_fixed_params *params)
+{
+    int i;
+    uint8_t kv_scale = (uint8_t)((buf->data[0x38] & 0x0f00) >> 8);
     int8_t kv[2][2];
-    int8_t *p_kv;
+    int8_t *p_kv = (int8_t *)kv;
+    float *p_float_kv = (float *)params->kv;
 
-    READ_16BITS(handle, 0x2434, &regdata, 1);
-    kv[0][0] = (int8_t)((regdata >> 12) & 0x000f);
-    kv[1][0] = (int8_t)((regdata >> 8) & 0x000f);
-    kv[0][1] = (int8_t)((regdata >> 4) & 0x000f);
-    kv[1][1] = (int8_t)(regdata & 0x000f);
+    kv[0][0] = (int8_t)((buf->data[0x34] >> 12) & 0x000f);
+    kv[1][0] = (int8_t)((buf->data[0x34] >> 8) & 0x000f);
+    kv[0][1] = (int8_t)((buf->data[0x34] >> 4) & 0x000f);
+    kv[1][1] = (int8_t)(buf->data[0x34] & 0x000f);
 
-    p_kv = (uint8_t *)kv;
     for (i = 0; i < 4; i++)
     {
         if (*p_kv > 7)
             *p_kv -= 16;
-        p_kv++;
+        *p_float_kv++ = (float)*p_kv++ / (1 << kv_scale);
     }
-    READ_16BITS(handle, 0x2438, &regdata, 1);
-    kv_scale = (uint8_t)((regdata & 0x0f00) >> 8);
+}
 
-    p_kv = params->kv;
+static inline float read_kv(struct ll_mlx90640_fixed_params *params,
+                            uint8_t x,
+                            uint8_t y)
+{
+    return params->kv[y % 2][x % 2];
+}
+
+static inline void restoring_kta(const struct ll_mlx90640_ee_buf *buf,
+                                 struct ll_mlx90640_fixed_params *params)
+{
+    int i, j;
+    int8_t kta_rc_ee[2][2];
+    uint8_t kta_scale_2 = (uint8_t)(buf->data[0x38] & 0x000f);
+    int16_t *p_kta = params->kta;
+
+    kta_rc_ee[0][0] = (int8_t)((buf->data[0x36] & 0xff00) >> 8);
+    kta_rc_ee[1][0] = (int8_t)(buf->data[0x36] & 0x00ff);
+    kta_rc_ee[0][1] = (int8_t)((buf->data[0x37] & 0xff00) >> 8);
+    kta_rc_ee[1][1] = (int8_t)(buf->data[0x37] & 0x00ff);
+
+    params->kta_scale_1 = (uint8_t)(((buf->data[0x38] & 0x00f0) >> 4) + 8);
+
     for (i = 0; i < 24; i++)
     {
         for (j = 0; j < 32; j++)
         {
-            *p_kv++ = kv[i % 2][j % 2] / (1 << kv_scale);
+            int8_t kta_ee = (int8_t)((buf->data[0x40] & 0x000e) >> 1);
+            if (kta_ee > 3)
+                kta_ee -= 8;
+            *p_kta++ = kta_rc_ee[i % 2][j % 2] + kta_ee * (1 << kta_scale_2);
         }
     }
-    return 0;
 }
 
-static inline int restoring_kta(struct ll_mlx90640 *handle, struct ll_mlx90640_fixed_params *params)
+static inline void restoring_gain(const struct ll_mlx90640_ee_buf *buf,
+                                  struct ll_mlx90640_fixed_params *params)
+{
+    params->gain = (int16_t)buf->data[0x30];
+}
+
+static inline void restoring_ks_ta(const struct ll_mlx90640_ee_buf *buf,
+                                   struct ll_mlx90640_fixed_params *params)
+{
+    int8_t ks_ta_ee = (int8_t)((buf->data[0x3c] & 0xff00) >> 8);
+    params->ks_ta = ks_ta_ee / (1 << 13);
+}
+
+static inline void restoring_corner_temp(const struct ll_mlx90640_ee_buf *buf,
+                                         struct ll_mlx90640_fixed_params *params)
+{
+    int8_t step = ((buf->data[0x3f] & 0x3000) >> 12) * 10;
+    params->ct[0] = -40;
+    params->ct[1] = 0;
+    params->ct[2] = ((buf->data[0x3f] & 0x00f0) >> 4) * step;
+    params->ct[3] = ((buf->data[0x3f] & 0x0f00) >> 8) * step + params->ct[2];
+}
+
+static inline void restoring_ks_to(const struct ll_mlx90640_ee_buf *buf,
+                                   struct ll_mlx90640_fixed_params *params)
+{
+    uint8_t ks_to_scale = (uint8_t)(buf->data[0x3f] & 0x000f) + 8;
+    params->ks_to[0] = (float)((int8_t)(buf->data[0x3d] & 0x00ff)) / (1 << ks_to_scale);
+    params->ks_to[1] = (float)((int8_t)((buf->data[0x3d] & 0xff00) >> 8)) / (1 << ks_to_scale);
+    params->ks_to[2] = (float)((int8_t)(buf->data[0x3e] & 0x00ff)) / (1 << ks_to_scale);
+    params->ks_to[3] = (float)((int8_t)((buf->data[0x3e] & 0xff00) >> 8)) / (1 << ks_to_scale);
+}
+
+static inline void restoring_alpha_corr_range(const struct ll_mlx90640_ee_buf *buf,
+                                              struct ll_mlx90640_fixed_params *params)
+{
+    params->alpha_corr_range[0] = 1 / (float)(1 + params->ks_to[0] * 40);
+    params->alpha_corr_range[1] = 1;
+    params->alpha_corr_range[2] = 1 + params->ks_to[1] * params->ct[2];
+    params->alpha_corr_range[3] = (1 + params->ks_to[1] * params->ct[2]) *
+                                  (1 + params->ks_to[2] * (params->ct[3] - params->ct[2]));
+}
+
+static inline void restoring_sensitivity_a_cp(const struct ll_mlx90640_ee_buf *buf,
+                                              struct ll_mlx90640_fixed_params *params)
+{
+    uint8_t a_scale_cp = (uint8_t)((buf->data[0x20] & 0xf000) >> 12) + 27;
+    int8_t cp_p1_p0_ratio;
+    cp_p1_p0_ratio = (int8_t)((buf->data[0x39] & 0xfc00) >> 10);
+    if (cp_p1_p0_ratio > 31)
+        cp_p1_p0_ratio -= 64;
+    params->a_cp_subpage[0] = (float)((int16_t)(buf->data[0x39] & 0x03ff)) / (1 << a_scale_cp);
+    params->a_cp_subpage[1] = params->a_cp_subpage[0] * (1 + (float)cp_p1_p0_ratio / (1 << 7));
+}
+
+static inline void restoring_off_cp(const struct ll_mlx90640_ee_buf *buf,
+                                    struct ll_mlx90640_fixed_params *params)
+{
+    int8_t off_cp_subpage_1_delta;
+    params->off_cp_subpage[0] = (int16_t)(buf->data[0x3a] & 0x3ff);
+    if (params->off_cp_subpage[0] > 511)
+        params->off_cp_subpage[0] -= 1024;
+    off_cp_subpage_1_delta = (int8_t)((buf->data[0x3a] & 0xfc00) >> 10);
+    if (off_cp_subpage_1_delta > 31)
+        off_cp_subpage_1_delta -= 64;
+    params->off_cp_subpage[1] = params->off_cp_subpage[0] + off_cp_subpage_1_delta;
+}
+
+static inline void restoring_kv_cp(const struct ll_mlx90640_ee_buf *buf,
+                                   struct ll_mlx90640_fixed_params *params)
+{
+    uint8_t kv_scale = (uint8_t)((buf->data[0x38] & 0x0f00) >> 8);
+    int8_t kv_cp_ee = (int8_t)((buf->data[0x3b] & 0xff00) >> 8);
+    params->kv_cp = (float)kv_cp_ee / (1 << kv_scale);
+}
+
+static inline void restoring_kta_cp(const struct ll_mlx90640_ee_buf *buf,
+                                    struct ll_mlx90640_fixed_params *params)
+{
+    int8_t kta_cp_ee = (int8_t)(buf->data[0x3b] & 0x00ff);
+    params->kta_cp = (float)kta_cp_ee / (1 << params->kta_scale_1);
+}
+
+static inline void restoring_tgc(const struct ll_mlx90640_ee_buf *buf,
+                                 struct ll_mlx90640_fixed_params *params)
+{
+    params->tgc = (float)((int8_t)(buf->data[0x3c] & 0x00ff)) / (1 << 5);
+}
+
+static inline void restoring_resolution(const struct ll_mlx90640_ee_buf *buf,
+                                        struct ll_mlx90640_fixed_params *params)
+{
+    params->resolution_ee = (uint8_t)((buf->data[0x38] & 0x3000) >> 12);
+}
+
+int ll_mlx90640_get_params(struct ll_mlx90640 *handle,
+                           struct ll_mlx90640_ee_buf *buf,
+                           struct ll_mlx90640_fixed_params *params)
 {
     int res;
-    int i, j;
-    uint16_t regdata;
 
-
-
+    READ_16BITS(handle, 0x2400, buf->data, sizeof(struct ll_mlx90640_ee_buf) >> 1);
+    restoring_vdd_param(buf, params);
+    restoring_ta_param(buf, params);
+    restoring_offset(buf, params);
+    restoring_sensitivity_alpha(buf, params);
+    restoring_kv(buf, params);
+    restoring_kta(buf, params);
+    restoring_gain(buf, params);
+    restoring_ks_ta(buf, params);
+    restoring_corner_temp(buf, params);
+    restoring_ks_to(buf, params);
+    restoring_alpha_corr_range(buf, params);
+    restoring_sensitivity_a_cp(buf, params);
+    restoring_off_cp(buf, params);
+    restoring_kv_cp(buf, params);
+    restoring_kta_cp(buf, params);
+    restoring_tgc(buf, params);
+    restoring_resolution(buf, params);
     return 0;
 }
-int ll_mlx90640_get_params(struct ll_mlx90640 *handle, struct ll_mlx90640_fixed_params *params)
-{
-}
 
-static int calculate_ta(struct ll_mlx90640 *handle, struct ll_mlx90640_fixed_params *params, struct ll_mlx90640_raw_data *data)
+static int calculate_ta(struct ll_mlx90640 *handle, struct ll_mlx90640_fixed_params *params, struct ll_mlx90640_ram_buf *data)
 {
     int16_t v_ptat = data->params[0x0020];
     int16_t v_be = data->params[0x0000];
@@ -393,7 +486,8 @@ static int calculate_ta(struct ll_mlx90640 *handle, struct ll_mlx90640_fixed_par
     v_ptat_art = (float)v_ptat / (v_ptat * params->alpha_ptat + v_be);
     v_ptat_art *= (2 << 18);
 
-    v_diff = (float)(data->params[0x002a] - params->vdd25) / params->k_vdd;
+    v_diff = (float)(data->params[0x002a] - params->vdd25) / params->kvdd;
     handle->ta = params->v_ptat_art / (1 + params->k_vptat * v_diff);
     handle->ta = (handle->ta - (float)params->v_ptat25) / params->k_tptat + 25;
+    return 0;
 }

@@ -26,6 +26,7 @@ static struct ll_pin *led;
 static struct ll_disp_drv *lcd;
 static struct ll_i2c_bus *i2c;
 static struct ll_mlx90640 mlx90640;
+struct ll_mlx90640_fixed_params *params;
 
 void timer_cb(TimerHandle_t timer)
 {
@@ -59,34 +60,12 @@ int main(void)
             LL_ERROR("mlx90640 init failed");
         else
         {
-            struct ll_mlx90640_raw_data *data = pvPortMalloc(sizeof(struct ll_mlx90640_raw_data));
-            if (data)
+            struct ll_mlx90640_ee_buf *ee_buf = pvPortMalloc(sizeof(struct ll_mlx90640_ee_buf));
+            params= pvPortMalloc(sizeof(struct ll_mlx90640_fixed_params));
+            if(ee_buf && params)
             {
-                while (1)
-                {
-                    while (ll_mlx90640_read_raw_data(&mlx90640, data))
-                    {
-                        vTaskDelay(10);
-                    }
-                    LL_DEBUG("mlx90640 get data");
-                    ll_printf("\r\n");
-                    for (int y = 0; y < 24; y++)
-                    {
-                        for (int x = 0; x < 32; x++)
-                        {
-                            uint16_t temp =abs((int16_t)(data->data[x + y * 32]));
-                            if(temp < 60)
-                                ll_printf("* ");
-                            else if(temp < 80)
-                                ll_printf(". ");
-                            else
-                                ll_printf("  ");
-                            // ll_printf("%4d ", (int16_t)data->data[x + y * 32]);
-                        }
-                        ll_printf("\r\n");
-                    }
-                    ll_printf("\r\n\r\n\r\n");
-                }
+                if(!ll_mlx90640_get_params(&mlx90640, ee_buf, params))
+                    LL_DEBUG("get params OK");
             }
         }
     }

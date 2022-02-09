@@ -26,15 +26,20 @@ enum ll_mlx90640_rate
     LL_MLX90640_RATE_LIMIT,
 };
 
-struct ll_mlx90640_raw_data
+struct ll_mlx90640_ram_buf
 {
     uint16_t data[768];
     uint16_t params[64];
 };
 
+struct ll_mlx90640_ee_buf
+{
+    uint16_t data[832];
+};
+
 struct ll_mlx90640_fixed_params
 {
-    int16_t k_vdd;
+    int16_t kvdd;
     int16_t vdd25;
 
     int16_t v_ptat25;
@@ -45,8 +50,24 @@ struct ll_mlx90640_fixed_params
 
     int16_t pix_os_ref[768];
     int16_t alpha[768];
-    int8_t kv[768];
-    int8_t kta[768];
+    uint8_t alpha_scale;
+
+    float kv[2][2];
+
+    int16_t kta[768];
+    uint8_t kta_scale_1;
+
+    int16_t gain;
+    float ks_ta;
+    int16_t ct[4];
+    float ks_to[4];
+    float alpha_corr_range[4];
+    float a_cp_subpage[2];
+    int16_t off_cp_subpage[2];
+    float kv_cp;
+    float kta_cp;
+    float tgc;
+    uint8_t resolution_ee;
 };
 
 struct ll_mlx90640
@@ -59,6 +80,9 @@ int ll_mlx90640_init(struct ll_mlx90640 *handle,
                      struct ll_i2c_bus *i2c_bus,
                      enum ll_mlx90640_rate rate);
 int ll_mlx90640_config(struct ll_mlx90640 *handle, enum ll_mlx90640_rate rate);
-int ll_mlx90640_read_raw_data(struct ll_mlx90640 *handle, struct ll_mlx90640_raw_data *data);
+int ll_mlx90640_read_raw_data(struct ll_mlx90640 *handle, struct ll_mlx90640_ram_buf *data);
+int ll_mlx90640_get_params(struct ll_mlx90640 *handle,
+                           struct ll_mlx90640_ee_buf *buf,
+                           struct ll_mlx90640_fixed_params *params);
 
 #endif
