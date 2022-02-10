@@ -143,7 +143,7 @@ int ll_mlx90640_config(struct ll_mlx90640 *handle, enum ll_mlx90640_rate rate)
  * @brief 获取原始数据
  *
  * @param handle 指向ll_mlx90640
- * @param buf 用户提供的缓存区，必须>=768
+ * @param buf 指向用与缓存ram数据的缓存区
  * @return int
  */
 int ll_mlx90640_read_raw_data(struct ll_mlx90640 *handle, struct ll_mlx90640_ram_buf *buf)
@@ -476,18 +476,85 @@ int ll_mlx90640_get_params(struct ll_mlx90640 *handle,
     return 0;
 }
 
-static int calculate_ta(struct ll_mlx90640 *handle, struct ll_mlx90640_fixed_params *params, struct ll_mlx90640_ram_buf *data)
+static inline float vdd_diff_calculate(struct ll_mlx90640_fixed_params *params,
+                                       struct ll_mlx90640_ram_buf *buf)
 {
-    int16_t v_ptat = data->params[0x0020];
-    int16_t v_be = data->params[0x0000];
+    int16_t temp;
+    float resolution_reg;
+
+    resolution_reg = (float)(1 << params->resolution_ee) / (1 << 2);
+    temp = (int16_t)(buf->params[0x2a]);
+    return (resolution_reg * temp - params->vdd25) / params->kvdd;
+}
+
+static inline float ta_diff_calculate(struct ll_mlx90640_fixed_params *params,
+                                      struct ll_mlx90640_ram_buf *data,
+                                      float v_diff)
+{
+    float ta_diff;
+    int16_t v_ptat = (int16_t)data->params[0x0020];
+    int16_t v_be = (int16_t)data->params[0x0000];
     float v_ptat_art;
+
+    v_ptat_art = (float)v_ptat * (1 << 18) / (v_ptat * params->alpha_ptat + v_be);
+
+    ta_diff = v_ptat_art / (1 + params->k_vptat * v_diff);
+    ta_diff = (ta_diff - (float)params->v_ptat25) / params->k_tptat;
+    return ta_diff;
+}
+
+static inline float kgain_calculate(struct ll_mlx90640_fixed_params *params,
+                                    struct ll_mlx90640_ram_buf *buf)
+{
+    int16_t temp = (int16_t)buf->params[0x0a];
+    return (float)params->gain / temp;
+}
+
+static inline ir_data_compensation(struct ll_mlx90640_fixed_params *params,
+                                   struct ll_mlx90640_ram_buf *buf,
+                                   struct ll_mlx90640_ir_data *data,
+                                   float kgain,
+                                   float ta_diff,
+                                   float v_diff)
+{
+    int i, j;
+    int16_t *src = (int16_t *)buf->data;
+    int16_t *p_off = params->pix_os_ref;
+    int16_t *p_kta = params->kta;
+    float *dst = data->temp;
+
+    for (i = 0; i < 32; i++)
+    {
+        for (j = 0; j < 24; j++)
+        {
+            float compen = (float)(*p_kta++) / (1 << params->kta_scale_1);
+            compen = *p_off++ * (1 + compen * ta_diff);
+            compen *= (1 + read_kv(params, i, j) * v_diff);
+            *dst = *src++ * kgain - compen;
+        }
+    }
+}
+
+int ll_mlx90640_calculate_temp(struct ll_mlx90640 *handle,
+                               struct ll_mlx90640_fixed_params *params,
+                               struct ll_mlx90640_ram_buf *buf,
+                               struct ll_mlx90640_ir_data *data)
+{
     float v_diff;
+    float ta_diff;
+    float kgain;
 
-    v_ptat_art = (float)v_ptat / (v_ptat * params->alpha_ptat + v_be);
-    v_ptat_art *= (2 << 18);
+    while (ll_mlx90640_read_raw_data(handle, buf))
+    {
+    }
 
-    v_diff = (float)(data->params[0x002a] - params->vdd25) / params->kvdd;
-    handle->ta = params->v_ptat_art / (1 + params->k_vptat * v_diff);
-    handle->ta = (handle->ta - (float)params->v_ptat25) / params->k_tptat + 25;
+    v_diff = vdd_diff_calculate(params, buf);
+    LL_INFO("vdd_diff %.3f", v_diff);
+    ta_diff = ta_diff_calculate(params, buf, v_diff);
+    LL_INFO("ta_diff %.3f", ta_diff);
+    kgain = kgain_calculate(params, buf);
+    LL_INFO("kgain %f", kgain);
+    ir_data_compensation(params, buf, data, kgain, ta_diff, v_diff);
+
     return 0;
 }

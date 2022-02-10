@@ -248,3 +248,5 @@ def_irq_handler CAN1_RX0_IRQHandler
 def_irq_handler CAN1_RX1_IRQHandler
 def_irq_handler CAN1_EWMC_IRQHandler
 def_irq_handler USBFS_IRQHandler
+
+.end

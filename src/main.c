@@ -61,11 +61,15 @@ int main(void)
         else
         {
             struct ll_mlx90640_ee_buf *ee_buf = pvPortMalloc(sizeof(struct ll_mlx90640_ee_buf));
-            params= pvPortMalloc(sizeof(struct ll_mlx90640_fixed_params));
-            if(ee_buf && params)
+            params = pvPortMalloc(sizeof(struct ll_mlx90640_fixed_params));
+            if (ee_buf && params)
             {
-                if(!ll_mlx90640_get_params(&mlx90640, ee_buf, params))
+                if (!ll_mlx90640_get_params(&mlx90640, ee_buf, params))
+                {
+                    struct ll_mlx90640_ram_buf *ram_buf = pvPortMalloc(sizeof(struct ll_mlx90640_ram_buf));
+                    ll_mlx90640_calculate_temp(&mlx90640, params, ram_buf);
                     LL_DEBUG("get params OK");
+                }
             }
         }
     }

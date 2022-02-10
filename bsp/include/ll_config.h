@@ -11,7 +11,7 @@
 #ifndef __CONFIG_H__
 #define __CONFIG_H__
 
-// #define LL_USING_LOG
+#define LL_USING_LOG
 #define LL_USING_LOG_TIMESTAMP
 #define USING_LOG_LABEL
 // #define USING_ASYNC_LOG

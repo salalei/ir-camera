@@ -45,7 +45,6 @@ struct ll_mlx90640_fixed_params
     int16_t v_ptat25;
     float k_vptat;
     float k_tptat;
-    float v_ptat_art;
     float alpha_ptat;
 
     int16_t pix_os_ref[768];
@@ -70,9 +69,13 @@ struct ll_mlx90640_fixed_params
     uint8_t resolution_ee;
 };
 
+struct ll_mlx90640_ir_data
+{
+    float temp[768];
+};
+
 struct ll_mlx90640
 {
-    float ta;
     struct ll_i2c_dev dev;
 };
 
@@ -84,5 +87,8 @@ int ll_mlx90640_read_raw_data(struct ll_mlx90640 *handle, struct ll_mlx90640_ram
 int ll_mlx90640_get_params(struct ll_mlx90640 *handle,
                            struct ll_mlx90640_ee_buf *buf,
                            struct ll_mlx90640_fixed_params *params);
+int ll_mlx90640_calculate_temp(struct ll_mlx90640 *handle,
+                               struct ll_mlx90640_fixed_params *params,
+                               struct ll_mlx90640_ram_buf *buf);
 
 #endif
